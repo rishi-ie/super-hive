@@ -1,0 +1,38 @@
+{
+	"name": "@superset/auth",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./server": {
+			"types": "./src/server.ts",
+			"default": "./src/server.ts"
+		},
+		"./client": {
+			"types": "./src/client.ts",
+			"default": "./src/client.ts"
+		},
+		"./env": {
+			"types": "./src/env.ts",
+			"default": "./src/env.ts"
+		},
+		"./stub": {
+			"types": "./src/stub.ts",
+			"default": "./src/stub.ts"
+		}
+	},
+	"scripts": {
+		"clean": "git clean -xdf .cache .turbo dist node_modules",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit --emitDeclarationOnly false"
+	},
+	"dependencies": {
+		"@superset/shared": "workspace:*",
+		"zod": "4.3.6"
+	},
+	"devDependencies": {
+		"@superset/typescript": "workspace:*",
+		"@types/node": "24.12.0",
+		"typescript": "6.0.3"
+	}
+}

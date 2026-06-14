@@ -1,0 +1,28 @@
+import path from "node:path";
+import { createEnv } from "@t3-oss/env-core";
+import { config } from "dotenv";
+import { z } from "zod";
+
+config({ path: path.resolve(process.cwd(), "../../../.env"), quiet: true });
+
+export const env = createEnv({
+	server: {
+		BETTER_AUTH_SECRET: z.string().optional(),
+		RESEND_API_KEY: z.string().optional(),
+		STRIPE_SECRET_KEY: z.string().optional(),
+		STRIPE_WEBHOOK_SECRET: z.string().optional(),
+		QSTASH_TOKEN: z.string().optional(),
+	},
+	clientPrefix: "NEXT_PUBLIC_",
+	client: {
+		NEXT_PUBLIC_COOKIE_DOMAIN: z.string().optional(),
+		NEXT_PUBLIC_API_URL: z.string().url().optional(),
+		NEXT_PUBLIC_WEB_URL: z.string().url().optional(),
+		NEXT_PUBLIC_ADMIN_URL: z.string().url().optional(),
+		NEXT_PUBLIC_MARKETING_URL: z.string().url().optional(),
+		NEXT_PUBLIC_DESKTOP_URL: z.string().url().optional(),
+	},
+	runtimeEnv: process.env,
+	emptyStringAsUndefined: true,
+	skipValidation: true,
+});
