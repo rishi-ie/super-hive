@@ -1,18 +1,12 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 
-import { adminRouter } from "./router/admin";
 import { agentRouter } from "./router/agent";
-import { analyticsRouter } from "./router/analytics";
 import { apiKeyRouter } from "./router/api-key";
-import { automationRouter } from "./router/automation";
-import { billingRouter } from "./router/billing";
 import { chatRouter } from "./router/chat";
 import { deviceRouter } from "./router/device";
 import { hostRouter } from "./router/host";
-import { integrationRouter } from "./router/integration";
 import { organizationRouter } from "./router/organization";
 import { projectRouter } from "./router/project";
-import { supportRouter } from "./router/support/support";
 import { taskRouter } from "./router/task";
 import { teamRouter } from "./router/team";
 import { userRouter } from "./router/user";
@@ -23,19 +17,13 @@ import { workspaceRouter } from "./router/workspace";
 import { createCallerFactory, createTRPCRouter } from "./trpc";
 
 export const appRouter = createTRPCRouter({
-	admin: adminRouter,
 	agent: agentRouter,
 	apiKey: apiKeyRouter,
-	analytics: analyticsRouter,
-	automation: automationRouter,
-	billing: billingRouter,
 	chat: chatRouter,
 	device: deviceRouter,
 	host: hostRouter,
-	integration: integrationRouter,
 	organization: organizationRouter,
 	project: projectRouter,
-	support: supportRouter,
 	task: taskRouter,
 	team: teamRouter,
 	user: userRouter,
