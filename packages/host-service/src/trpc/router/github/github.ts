@@ -1,6 +1,45 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../../index";
 
+const stubPR = {
+	number: 0,
+	title: "stub",
+	state: "open",
+	html_url: "",
+	created_at: new Date().toISOString(),
+	updated_at: new Date().toISOString(),
+	merged_at: null,
+	user: { login: "stub", avatar_url: "" },
+	head: { ref: "stub", sha: "stub" },
+	base: { ref: "main", sha: "stub" },
+};
+
+const stubRepo = {
+	id: 0,
+	name: "stub",
+	full_name: "stub/stub",
+	owner: { login: "stub", avatar_url: "" },
+	html_url: "",
+	description: null,
+	private: false,
+	fork: false,
+	default_branch: "main",
+};
+
+const stubUser = {
+	login: "stub",
+	id: 0,
+	avatar_url: "",
+	html_url: "",
+	type: "User",
+};
+
+const stubMerge = {
+	merged: false,
+	message: "stub",
+	sha: "stub",
+};
+
 export const githubRouter = router({
 	getPRStatus: protectedProcedure
 		.input(
@@ -10,16 +49,7 @@ export const githubRouter = router({
 				branch: z.string(),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.pulls.list({
-				owner: input.owner,
-				repo: input.repo,
-				head: `${input.owner}:${input.branch}`,
-				state: "open",
-			});
-			return data[0] ?? null;
-		}),
+		.query(() => null),
 
 	getPR: protectedProcedure
 		.input(
@@ -29,15 +59,7 @@ export const githubRouter = router({
 				pullNumber: z.number(),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.pulls.get({
-				owner: input.owner,
-				repo: input.repo,
-				pull_number: input.pullNumber,
-			});
-			return data;
-		}),
+		.query(() => stubPR),
 
 	listPRs: protectedProcedure
 		.input(
@@ -53,19 +75,7 @@ export const githubRouter = router({
 				page: z.number().min(1).default(1),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.pulls.list({
-				owner: input.owner,
-				repo: input.repo,
-				state: input.state,
-				sort: input.sort,
-				direction: input.direction,
-				per_page: input.perPage,
-				page: input.page,
-			});
-			return data;
-		}),
+		.query(() => []),
 
 	getRepo: protectedProcedure
 		.input(
@@ -74,14 +84,7 @@ export const githubRouter = router({
 				repo: z.string(),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.repos.get({
-				owner: input.owner,
-				repo: input.repo,
-			});
-			return data;
-		}),
+		.query(() => stubRepo),
 
 	listDeployments: protectedProcedure
 		.input(
@@ -93,17 +96,7 @@ export const githubRouter = router({
 				perPage: z.number().min(1).max(100).default(10),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.repos.listDeployments({
-				owner: input.owner,
-				repo: input.repo,
-				environment: input.environment,
-				ref: input.ref,
-				per_page: input.perPage,
-			});
-			return data;
-		}),
+		.query(() => []),
 
 	listDeploymentStatuses: protectedProcedure
 		.input(
@@ -114,22 +107,9 @@ export const githubRouter = router({
 				perPage: z.number().min(1).max(100).default(10),
 			}),
 		)
-		.query(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.repos.listDeploymentStatuses({
-				owner: input.owner,
-				repo: input.repo,
-				deployment_id: input.deploymentId,
-				per_page: input.perPage,
-			});
-			return data;
-		}),
+		.query(() => []),
 
-	getUser: protectedProcedure.query(async ({ ctx }) => {
-		const octokit = await ctx.github();
-		const { data } = await octokit.users.getAuthenticated();
-		return data;
-	}),
+	getUser: protectedProcedure.query(() => stubUser),
 
 	mergePR: protectedProcedure
 		.input(
@@ -140,14 +120,5 @@ export const githubRouter = router({
 				mergeMethod: z.enum(["merge", "squash", "rebase"]).default("merge"),
 			}),
 		)
-		.mutation(async ({ ctx, input }) => {
-			const octokit = await ctx.github();
-			const { data } = await octokit.pulls.merge({
-				owner: input.owner,
-				repo: input.repo,
-				pull_number: input.pullNumber,
-				merge_method: input.mergeMethod,
-			});
-			return data;
-		}),
+		.mutation(() => stubMerge),
 });

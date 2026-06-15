@@ -39,7 +39,6 @@ import {
 	shutdownTanstackDbPersistence,
 } from "./lib/persistence/persistence";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
-import { initSentry } from "./lib/sentry";
 import {
 	prewarmTerminalRuntime,
 	reconcileDaemonSessions,
@@ -390,7 +389,6 @@ if (!gotTheLock) {
 
 		ensureProjectIconsDir();
 		setWorkspaceDockIcon();
-		initSentry();
 		await initAppState();
 		initTanstackDbPersistence();
 

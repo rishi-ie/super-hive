@@ -1,7 +1,6 @@
-import {
-	type AppCollections,
-	ELECTRIC_WRITE_SYNC_TIMEOUT_MS,
-} from "./collections";
+import type { AppCollections } from "./collections";
+
+const SYNC_TIMEOUT_MS = 30_000;
 
 export function waitForWorkspaceDeleted(
 	collection: AppCollections["v2Workspaces"],
@@ -22,7 +21,7 @@ export function waitForWorkspaceDeleted(
 					`Workspace ${workspaceId} deletion did not sync to the local collection`,
 				),
 			);
-		}, ELECTRIC_WRITE_SYNC_TIMEOUT_MS);
+		}, SYNC_TIMEOUT_MS);
 
 		const finish = () => {
 			if (settled || collection.get(workspaceId)) return;

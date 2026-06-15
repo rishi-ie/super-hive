@@ -1,5 +1,4 @@
 import { auth } from "@superset/auth/server";
-import { stripeClient } from "@superset/auth/stripe";
 import { db } from "@superset/db/client";
 import { members, organizations } from "@superset/db/schema";
 import {

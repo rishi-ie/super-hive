@@ -1,15 +1,26 @@
-export const PLAN_TIERS = ["free"] as const;
-export type PlanTier = (typeof PLAN_TIERS)[number];
+export type PlanTier = "free" | "pro" | "team" | "enterprise";
 
-export const ACTIVE_SUBSCRIPTION_STATUSES = [] as const;
-export type ActiveSubscriptionStatus = never;
-
-export function isPaidPlan(_plan: string | null | undefined): boolean {
-	return false;
-}
+export const ACTIVE_SUBSCRIPTION_STATUSES = [
+	"active",
+	"trialing",
+	"past_due",
+] as const;
 
 export function isActiveSubscriptionStatus(
-	_status: string | null | undefined,
-): _status is ActiveSubscriptionStatus {
-	return false;
+	status: string | null | undefined,
+): boolean {
+	if (!status) return false;
+	return (ACTIVE_SUBSCRIPTION_STATUSES as readonly string[]).includes(status);
+}
+
+export function isPaidPlan(plan: string | null | undefined): boolean {
+	if (!plan) return false;
+	return plan !== "free";
+}
+
+export function formatPrice(amount: number, currency = "usd"): string {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: currency.toUpperCase(),
+	}).format(amount / 100);
 }

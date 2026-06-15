@@ -1,7 +1,6 @@
 import type { MosaicNode } from "react-mosaic-component";
 import { updateTree } from "react-mosaic-component";
 import { getFileOpenMode } from "renderer/hooks/useFileOpenMode";
-import { posthog } from "renderer/lib/posthog";
 import { trpcTabsStorage } from "renderer/lib/trpc-storage";
 import { deleteDocumentBuffer } from "renderer/stores/editor-state/editorBufferRegistry";
 import { useEditorDocumentsStore } from "renderer/stores/editor-state/useEditorDocumentsStore";
@@ -236,11 +235,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "terminal",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
+
 
 					return { tabId: tab.id, paneId: pane.id };
 				},
@@ -276,11 +271,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "chat",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
+
 
 					return { tabId: tab.id, paneId: pane.id };
 				},
@@ -343,13 +334,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					for (const paneId of paneIds) {
-						posthog.capture("panel_opened", {
-							panel_type: "terminal",
-							workspace_id: workspaceId,
-							pane_id: paneId,
-						});
-					}
+
 
 					return { tabId: tab.id, paneIds };
 				},
@@ -621,11 +606,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "terminal",
-						workspace_id: tab.workspaceId,
-						pane_id: newPane.id,
-					});
+
 
 					return newPane.id;
 				},
@@ -657,11 +638,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "chat",
-						workspace_id: tab.workspaceId,
-						pane_id: newPane.id,
-					});
+
 
 					return newPane.id;
 				},
@@ -706,13 +683,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					for (const paneId of paneIds) {
-						posthog.capture("panel_opened", {
-							panel_type: "terminal",
-							workspace_id: tab.workspaceId,
-							pane_id: paneId,
-						});
-					}
+
 
 					return paneIds;
 				},
@@ -995,11 +966,7 @@ export const useTabsStore = create<TabsStore>()(
 							},
 						});
 
-						posthog.capture("panel_opened", {
-							panel_type: "file_viewer",
-							workspace_id: workspaceId,
-							pane_id: newPane.id,
-						});
+
 
 						return newPane.id;
 					}
@@ -1029,11 +996,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "file_viewer",
-						workspace_id: activeTab.workspaceId,
-						pane_id: newPane.id,
-					});
+
 
 					return newPane.id;
 				},
@@ -1468,11 +1431,6 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: panelType,
-						workspace_id: tab.workspaceId,
-						pane_id: newPane.id,
-					});
 				},
 
 				splitPaneHorizontal: (tabId, sourcePaneId, path, options) => {
@@ -1537,11 +1495,6 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: panelType,
-						workspace_id: tab.workspaceId,
-						pane_id: newPane.id,
-					});
 				},
 
 				splitPaneAuto: (tabId, sourcePaneId, dimensions, path, options) => {
@@ -1677,11 +1630,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "comment",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
+
 
 					return { tabId: tab.id, paneId: pane.id };
 				},
@@ -1722,11 +1671,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "browser",
-						workspace_id: workspaceId,
-						pane_id: pane.id,
-					});
+
 
 					return { tabId: tab.id, paneId: pane.id };
 				},
@@ -1841,11 +1786,7 @@ export const useTabsStore = create<TabsStore>()(
 							},
 						});
 
-						posthog.capture("panel_opened", {
-							panel_type: "browser",
-							workspace_id: workspaceId,
-							pane_id: newPane.id,
-						});
+
 					}
 				},
 
@@ -2069,11 +2010,7 @@ export const useTabsStore = create<TabsStore>()(
 						},
 					});
 
-					posthog.capture("panel_opened", {
-						panel_type: "devtools",
-						workspace_id: tab.workspaceId,
-						pane_id: newPane.id,
-					});
+
 
 					return newPane.id;
 				},
