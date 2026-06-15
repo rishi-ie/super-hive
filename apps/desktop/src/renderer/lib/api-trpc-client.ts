@@ -53,6 +53,9 @@ const createStubApiTrpcClient = () => {
 			uploadAttachment: { mutate: async () => ({ id: "", url: "" }) },
 			getModels: { query: async () => ({ models: [] }) },
 		},
+		device: {
+			registerDevice: { mutate: async () => ({ device: { id: "" }, timestamp: new Date() }) },
+		},
 		integration: {
 			github: {
 				getInstallation: { query: async () => ({ installed: false }) },
