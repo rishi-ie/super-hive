@@ -46,6 +46,16 @@ async function getOrganization(
 
 export const hostRouter = router({
 	info: protectedProcedure.query(async ({ ctx }) => {
+		if (!ctx.api || process.env.SUPERSET_API_URL === "") {
+			return {
+				hostId: getHostId(),
+				hostName: getHostName(),
+				version: HOST_SERVICE_VERSION,
+				organization: { id: "stub-org-id", name: "Local Org", slug: "local" },
+				platform: os.platform(),
+				uptime: process.uptime(),
+			};
+		}
 		const organization = await getOrganization(ctx.api, ctx.organizationId);
 
 		return {

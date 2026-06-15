@@ -290,6 +290,22 @@ export class ChatRuntimeService {
 				sendMessage: t.procedure
 					.input(sendMessageInput)
 					.mutation(async ({ input }) => {
+						if (process.env.SUPERSET_CHAT_STUB === "true") {
+							return {
+								sessionId: input.sessionId,
+								message: {
+									id: `mock-${Date.now()}`,
+									role: "assistant",
+									content: [
+										{
+											type: "text",
+											text: "This is a local mock response. Connect a real AI provider to get actual responses.",
+										},
+									],
+									stopReason: "end_turn",
+								},
+							};
+						}
 						const runtime = await this.getOrCreateRuntime(
 							input.sessionId,
 							input.cwd,
@@ -322,6 +338,9 @@ export class ChatRuntimeService {
 				restartFromMessage: t.procedure
 					.input(restartFromMessageInput)
 					.mutation(async ({ input }) => {
+						if (process.env.SUPERSET_CHAT_STUB === "true") {
+							return;
+						}
 						const runtime = await this.getOrCreateRuntime(
 							input.sessionId,
 							input.cwd,
@@ -345,6 +364,9 @@ export class ChatRuntimeService {
 					}),
 
 				stop: t.procedure.input(sessionIdInput).mutation(async ({ input }) => {
+					if (process.env.SUPERSET_CHAT_STUB === "true") {
+						return;
+					}
 					const runtime = await this.getOrCreateRuntime(
 						input.sessionId,
 						input.cwd,
@@ -353,6 +375,9 @@ export class ChatRuntimeService {
 				}),
 
 				abort: t.procedure.input(sessionIdInput).mutation(async ({ input }) => {
+					if (process.env.SUPERSET_CHAT_STUB === "true") {
+						return;
+					}
 					const runtime = await this.getOrCreateRuntime(
 						input.sessionId,
 						input.cwd,
@@ -364,6 +389,9 @@ export class ChatRuntimeService {
 					respond: t.procedure
 						.input(approvalRespondInput)
 						.mutation(async ({ input }) => {
+							if (process.env.SUPERSET_CHAT_STUB === "true") {
+								return;
+							}
 							const runtime = await this.getOrCreateRuntime(
 								input.sessionId,
 								input.cwd,
@@ -376,6 +404,9 @@ export class ChatRuntimeService {
 					respond: t.procedure
 						.input(questionRespondInput)
 						.mutation(async ({ input }) => {
+							if (process.env.SUPERSET_CHAT_STUB === "true") {
+								return;
+							}
 							const runtime = await this.getOrCreateRuntime(
 								input.sessionId,
 								input.cwd,
@@ -391,6 +422,9 @@ export class ChatRuntimeService {
 					respond: t.procedure
 						.input(planRespondInput)
 						.mutation(async ({ input }) => {
+							if (process.env.SUPERSET_CHAT_STUB === "true") {
+								return;
+							}
 							const runtime = await this.getOrCreateRuntime(
 								input.sessionId,
 								input.cwd,

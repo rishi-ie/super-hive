@@ -14,18 +14,16 @@ export const env = createEnv({
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
 			.default("development"),
-		NEXT_PUBLIC_API_URL: z.url().default("https://api.superset.sh"),
-		NEXT_PUBLIC_STREAMS_URL: z.url().default("https://streams.superset.sh"),
-		NEXT_PUBLIC_ELECTRIC_URL: z
-			.url()
-			.default("https://electric-proxy.avi-6ac.workers.dev"),
-		NEXT_PUBLIC_WEB_URL: z.url().default("https://app.superset.sh"),
-		NEXT_PUBLIC_MARKETING_URL: z.url().default("https://superset.sh"),
+		NEXT_PUBLIC_API_URL: z.string().default("http://localhost:3000"),
+		NEXT_PUBLIC_STREAMS_URL: z.string().default("http://localhost:3000"),
+		NEXT_PUBLIC_ELECTRIC_URL: z.string().default(""),
+		NEXT_PUBLIC_WEB_URL: z.string().default("http://localhost:3000"),
+		NEXT_PUBLIC_MARKETING_URL: z.string().default("http://localhost:3000"),
 		NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
-		NEXT_PUBLIC_POSTHOG_HOST: z.string().default("https://us.i.posthog.com"),
+		NEXT_PUBLIC_POSTHOG_HOST: z.string().optional(),
 		SENTRY_DSN_DESKTOP: z.string().optional(),
-		STREAMS_URL: z.url().default("https://superset-stream.fly.dev"),
-		RELAY_URL: z.url().default("https://relay.superset.sh"),
+		STREAMS_URL: z.string().default(""),
+		RELAY_URL: z.string().default(""),
 	},
 
 	runtimeEnv: {

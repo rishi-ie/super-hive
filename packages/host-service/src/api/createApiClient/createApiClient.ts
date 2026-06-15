@@ -12,12 +12,6 @@ function isUnauthorizedError(err: unknown): boolean {
 	return e.data?.code === "UNAUTHORIZED" || e.data?.httpStatus === 401;
 }
 
-/**
- * One-shot retry on UNAUTHORIZED. The provider's cached JWT can outlive its
- * actual validity (clock skew, JWKS rotation, session revoked mid-flight) —
- * dropping the cache and retrying once recovers without bubbling 401 back
- * up to user-facing flows like "register host".
- */
 function retryOnUnauthorizedLink(
 	authProvider: ApiAuthProvider,
 ): TRPCLink<AppRouter> {
@@ -51,11 +45,36 @@ function retryOnUnauthorizedLink(
 			});
 }
 
+function createStubApiClient(): ApiClient {
+	return createTRPCClient<AppRouter>({
+		links: [
+			() =>
+				({ op, next }) =>
+					observable((observer) => {
+						console.warn(`[stub-api] Called ${op.path} (${op.type}), returning empty response`);
+						if (op.type === "query") {
+							observer.next({ data: undefined } as never);
+							observer.complete();
+						} else {
+							observer.next({ data: undefined } as never);
+							observer.complete();
+						}
+						return () => {};
+					}),
+		],
+	});
+}
+
 export function createApiClient(
 	baseUrl: string,
 	authProvider: ApiAuthProvider,
 	organizationId: string,
 ): ApiClient {
+	if (!baseUrl) {
+		console.warn("[api] SUPERSET_API_URL not set, using stub API client");
+		return createStubApiClient();
+	}
+
 	return createTRPCClient<AppRouter>({
 		links: [
 			retryOnUnauthorizedLink(authProvider),
@@ -63,12 +82,6 @@ export function createApiClient(
 				url: `${baseUrl}/api/trpc`,
 				transformer: SuperJSON,
 				async headers() {
-					// Pin every host→cloud request to this host's bound org. The
-					// host's session-exchanged JWT (better-auth jwt plugin) only
-					// carries `organizationIds`, not a singular active org, so
-					// `protectedProcedure` would otherwise reject any call that
-					// reads `ctx.activeOrganizationId`. The cloud middleware
-					// validates membership before honoring this header.
 					return {
 						...(await authProvider.getHeaders()),
 						[ORGANIZATION_HEADER]: organizationId,
