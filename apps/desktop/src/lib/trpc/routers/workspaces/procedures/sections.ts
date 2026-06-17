@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
-import { stubLog, STUB_PROJECTS, STUB_WORKSPCES } from "../../../../stub-data";
+import { stubLog } from "../../../../stub-data";
 
 export const createSectionsProcedures = () => {
 	return router({

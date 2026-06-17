@@ -9,5 +9,3 @@ export const createSystemRouter = () => {
 		}),
 	});
 };
-
-export type SystemRouter = ReturnType<typeof createSystemRouter>;

@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import type { KeyboardLayoutData } from "main/lib/keyboardLayout";
 import { publicProcedure, router } from "..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 export const createKeyboardLayoutRouter = () => {
 	return router({
@@ -11,9 +10,7 @@ export const createKeyboardLayoutRouter = () => {
 		}),
 		changes: publicProcedure.subscription(() => {
 			stubLog("keyboardLayout", "changes");
-			return observable<KeyboardLayoutData>(() => {
-				return () => {};
-			});
+			return stubObservable<KeyboardLayoutData>();
 		}),
 	});
 };

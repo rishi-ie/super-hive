@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 export const createAuthRouter = () => {
 	return router({
@@ -32,9 +31,7 @@ export const createAuthRouter = () => {
 
 		onTokenChanged: publicProcedure.subscription(() => {
 			stubLog("auth", "onTokenChanged");
-			return observable<{ token: string; expiresAt: string } | null>(() => {
-				return () => {};
-			});
+			return stubObservable<{ token: string; expiresAt: string } | null>();
 		}),
 
 		signIn: publicProcedure
@@ -50,5 +47,3 @@ export const createAuthRouter = () => {
 		}),
 	});
 };
-
-export type AuthRouter = ReturnType<typeof createAuthRouter>;

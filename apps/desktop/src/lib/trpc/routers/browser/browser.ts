@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 export const createBrowserRouter = () => {
 	return router({
@@ -72,49 +71,39 @@ export const createBrowserRouter = () => {
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
 				stubLog("browser", "consoleStream", input);
-				return observable<{
+				return stubObservable<{
 					level: string;
 					message: string;
 					timestamp: number;
-				}>((emit) => {
-					return () => {};
-				});
+				}>();
 			}),
 
 		onNewWindow: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
 				stubLog("browser", "onNewWindow", input);
-				return observable<{ url: string }>((emit) => {
-					return () => {};
-				});
+				return stubObservable<{ url: string }>();
 			}),
 
 		onContextMenuAction: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
 				stubLog("browser", "onContextMenuAction", input);
-				return observable<{ action: string; url: string }>((emit) => {
-					return () => {};
-				});
+				return stubObservable<{ action: string; url: string }>();
 			}),
 
 		onClosePane: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
 				stubLog("browser", "onClosePane", input);
-				return observable<void>((emit) => {
-					return () => {};
-				});
+				return stubObservable<void>();
 			}),
 
 		onReloadPane: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
 				stubLog("browser", "onReloadPane", input);
-				return observable<void>((emit) => {
-					return () => {};
-				});
+				return stubObservable<void>();
 			}),
 
 		openDevTools: publicProcedure

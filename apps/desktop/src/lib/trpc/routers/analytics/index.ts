@@ -8,9 +8,7 @@ export const createAnalyticsRouter = () => {
 			.input(z.object({ userId: z.string().nullable() }))
 			.mutation(({ input }) => {
 				stubLog("analytics", "setUserId", input);
-				return { success: true };
-			}),
+			return { success: true };
+		}),
 	});
 };
-
-export type AnalyticsRouter = ReturnType<typeof createAnalyticsRouter>;

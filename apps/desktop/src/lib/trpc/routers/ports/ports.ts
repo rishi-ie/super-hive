@@ -1,8 +1,7 @@
-import { observable } from "@trpc/server/observable";
 import type { DetectedPort } from "shared/types";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 type PortEvent =
 	| { type: "add"; port: DetectedPort }
@@ -17,9 +16,7 @@ export const createPortsRouter = () => {
 
 		subscribe: publicProcedure.subscription(() => {
 			stubLog("ports", "subscribe");
-			return observable<PortEvent>((emit) => {
-				return () => {};
-			});
+			return stubObservable<PortEvent>();
 		}),
 
 		kill: publicProcedure

@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 const writeFileContentSchema = z.union([
 	z.string(),
@@ -186,9 +185,7 @@ export const createFilesystemRouter = () => {
 			)
 			.subscription(({ input }) => {
 				stubLog("filesystem", "watchPath", input);
-				return observable<WatchPathEventBatch>(() => {
-					return () => {};
-				});
+				return stubObservable<WatchPathEventBatch>();
 			}),
 	});
 };

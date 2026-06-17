@@ -1,8 +1,7 @@
-import { observable } from "@trpc/server/observable";
 import type { V2NotificationSourceFocusTarget } from "shared/notification-types";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 type NotificationEvent =
 	| {
@@ -44,9 +43,7 @@ export const createNotificationsRouter = () => {
 
 		subscribe: publicProcedure.subscription(() => {
 			stubLog("notifications", "subscribe");
-			return observable<NotificationEvent>((emit) => {
-				return () => {};
-			});
+			return stubObservable<NotificationEvent>();
 		}),
 	});
 };

@@ -1,11 +1,7 @@
 import type { SetupAction, SetupDetectionResult } from "shared/types/config";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import {
-	stubLog,
-	STUB_PROJECTS,
-} from "../../stub-data";
-import { loadSetupConfig } from "../workspaces/utils/setup";
+import { stubLog } from "../../stub-data";
 
 export const createConfigRouter = () => {
 	return router({
@@ -60,9 +56,7 @@ export const createConfigRouter = () => {
 			)
 			.mutation(({ input }) => {
 				stubLog("config", "updateConfig", input);
-				return { success: true };
-			}),
+			return { success: true };
+		}),
 	});
 };
-
-export type ConfigRouter = ReturnType<typeof createConfigRouter>;

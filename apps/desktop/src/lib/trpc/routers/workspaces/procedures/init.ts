@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../../..";
-import { stubLog } from "../../../../stub-data";
+import { stubLog, stubObservable } from "../../../../stub-data";
 import type { WorkspaceInitProgress } from "shared/types/workspace-init";
 
 export const createInitProcedures = () => {
@@ -12,9 +11,7 @@ export const createInitProcedures = () => {
 			)
 			.subscription(({ input }) => {
 				stubLog("workspaces.init", "onInitProgress", input);
-				return observable<WorkspaceInitProgress>((_emit) => {
-					return () => {};
-				});
+				return stubObservable<WorkspaceInitProgress>();
 			}),
 
 		retryInit: publicProcedure

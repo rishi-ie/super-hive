@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 const SAFE_ID = z
 	.string()
@@ -173,7 +172,7 @@ export const createTerminalRouter = () => {
 			.input(z.string())
 			.subscription(({ input: paneId }) => {
 				stubLog("terminal", "stream", { paneId });
-				return observable(() => {});
+				return stubObservable();
 			}),
 	});
 };

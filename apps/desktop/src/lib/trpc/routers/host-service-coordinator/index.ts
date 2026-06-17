@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 const orgInput = z.object({ organizationId: z.string() });
 
@@ -34,9 +33,7 @@ export const createHostServiceCoordinatorRouter = () => {
 
 		onStatusChange: publicProcedure.subscription(() => {
 			stubLog("hostServiceCoordinator", "onStatusChange");
-			return observable((emit) => {
-				return () => {};
-			});
+			return stubObservable();
 		}),
 	});
 };

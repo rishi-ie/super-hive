@@ -20,5 +20,3 @@ export const createWorkspacesRouter = () => {
 		createGenerateBranchNameProcedures(),
 	);
 };
-
-export type WorkspacesRouter = ReturnType<typeof createWorkspacesRouter>;

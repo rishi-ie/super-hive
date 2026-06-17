@@ -2,7 +2,6 @@ import { z } from "zod";
 import { publicProcedure, router } from "../../..";
 import {
 	stubLog,
-	STUB_PROJECTS,
 	STUB_WORKSPCES,
 } from "../../../../stub-data";
 

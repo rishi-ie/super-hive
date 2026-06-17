@@ -9,5 +9,3 @@ export const createCacheRouter = () => {
 		}),
 	});
 };
-
-export type CacheRouter = ReturnType<typeof createCacheRouter>;

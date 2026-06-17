@@ -8,9 +8,14 @@
  * As you implement features, replace these stubs with real logic.
  */
 
+import { observable } from "@trpc/server/observable";
+
 export const stubLog = (router: string, proc: string, args?: unknown) => {
   console.log(`[STUB] ${router}.${proc} called`, args ?? "");
 };
+
+export const stubObservable = <T>() =>
+  observable<T>(() => () => {});
 
 export const STUB_MACHINE_ID = "stub-machine-id";
 
@@ -77,12 +82,10 @@ export const STUB_SETTINGS = {
   defaultEditor: null,
   autoApplyDefaultPreset: false,
   showResourceMonitor: false,
-  branchPrefix: "",
   deleteLocalBranch: false,
   notificationSoundsMuted: false,
   notificationVolume: 0.5,
   fontSettings: { fontSize: 14, fontFamily: "SF Mono" },
   worktreeBaseDir: "/mock",
   exposeHostServiceViaRelay: false,
-  telemetryEnabled: false,
 };

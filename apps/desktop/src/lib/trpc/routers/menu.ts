@@ -1,7 +1,6 @@
-import { observable } from "@trpc/server/observable";
 import type { OpenSettingsEvent, OpenWorkspaceEvent } from "main/lib/menu-events";
 import { publicProcedure, router } from "..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 type MenuEvent =
 	| { type: "open-settings"; data: OpenSettingsEvent }
@@ -12,9 +11,7 @@ export const createMenuRouter = () => {
 	return router({
 		subscribe: publicProcedure.subscription(() => {
 			stubLog("menu", "subscribe");
-			return observable<MenuEvent>(() => {
-				return () => {};
-			});
+			return stubObservable<MenuEvent>();
 		}),
 	});
 };

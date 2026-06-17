@@ -1,14 +1,11 @@
-import { observable } from "@trpc/server/observable";
 import { publicProcedure, router } from "../..";
-import { stubLog } from "../../stub-data";
+import { stubLog, stubObservable } from "../../stub-data";
 
 export const createAutoUpdateRouter = () => {
 	return router({
 		subscribe: publicProcedure.subscription(() => {
 			stubLog("auto-update", "subscribe");
-			return observable((emit) => {
-				return () => {};
-			});
+			return stubObservable();
 		}),
 
 		getStatus: publicProcedure.query(() => {

@@ -211,11 +211,7 @@ export const createChatRuntimeServiceRouter = () => {
 					.mutation(({ input }) => {
 						stubLog("chatRuntimeService", "session.plan.respond", input);
 					}),
-			}),
+				}),
 		}),
 	});
 };
-
-export type ChatRuntimeServiceDesktopRouter = ReturnType<
-	typeof createChatRuntimeServiceRouter
->;

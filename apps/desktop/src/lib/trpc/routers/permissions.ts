@@ -40,5 +40,3 @@ export const createPermissionsRouter = () => {
 		}),
 	});
 };
-
-export type PermissionsRouter = ReturnType<typeof createPermissionsRouter>;

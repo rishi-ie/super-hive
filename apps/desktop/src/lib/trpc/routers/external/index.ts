@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { stubLog } from "../../stub-data";
-import { observable } from "@trpc/server/observable";
 
 const ExternalAppSchema = z.enum(["cursor", "vscode", "zed", "finder", "terminal", "difftool"]);
 
@@ -83,5 +82,3 @@ export const createExternalRouter = () => {
 			}),
 	});
 };
-
-export type ExternalRouter = ReturnType<typeof createExternalRouter>;

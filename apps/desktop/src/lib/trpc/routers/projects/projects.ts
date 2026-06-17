@@ -345,9 +345,7 @@ export const createProjectsRouter = (getWindow: () => BrowserWindow | null) => {
 			)
 			.mutation(async ({ input }) => {
 				stubLog("projects", "setProjectIcon", input);
-				return { iconUrl: null };
-			}),
+			return { iconUrl: null };
+		}),
 	});
 };
-
-export type ProjectsRouter = ReturnType<typeof createProjectsRouter>;

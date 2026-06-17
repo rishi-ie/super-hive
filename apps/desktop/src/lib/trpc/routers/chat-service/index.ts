@@ -52,7 +52,7 @@ const STUB_AUTH_STATUS = {
 	issue: null,
 };
 
-const createChatServiceRouter = () => {
+export const createChatServiceRouter = () => {
 	return t.router({
 		workspace: t.router({
 			searchFiles: t.procedure
@@ -194,7 +194,3 @@ const createChatServiceRouter = () => {
 		}),
 	});
 };
-
-export { createChatServiceRouter };
-
-export type ChatServiceDesktopRouter = ReturnType<typeof createChatServiceRouter>;
