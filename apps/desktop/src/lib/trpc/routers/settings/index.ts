@@ -9,11 +9,6 @@ import {
 	TERMINAL_LINK_BEHAVIORS,
 	type TerminalPreset,
 } from "@superset/local-db";
-import {
-	AGENT_PRESET_COMMANDS,
-	AGENT_PRESET_DESCRIPTIONS,
-	DEFAULT_TERMINAL_PRESET_AGENT_TYPES,
-} from "@superset/shared/agent-command";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { STUB_SETTINGS, stubLog } from "../../stub-data";
