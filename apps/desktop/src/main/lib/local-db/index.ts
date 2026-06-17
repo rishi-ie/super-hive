@@ -1,106 +1,62 @@
-import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import * as schema from "@superset/local-db";
+export { schema };
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { app } from "electron";
-import { validate as uuidValidate, version as uuidVersion } from "uuid";
-import { env } from "../../env.main";
-import {
-	ensureSupersetHomeDirExists,
-	SUPERSET_HOME_DIR,
-	SUPERSET_SENSITIVE_FILE_MODE,
-} from "../app-environment";
+type QueryBuilder = {
+  from: (table: unknown) => QueryBuilder;
+  where: (cond: unknown) => QueryBuilder;
+  all: () => unknown[];
+  get: () => unknown | null;
+  orderBy: (...args: unknown[]) => QueryBuilder;
+  limit: (n: number) => QueryBuilder;
+  innerJoin?: (table: unknown, on: unknown) => QueryBuilder;
+  leftJoin?: (table: unknown, on: unknown) => QueryBuilder;
+};
 
-const DB_PATH = join(SUPERSET_HOME_DIR, "local.db");
+type MutationBuilder = {
+  values: (data: unknown) => MutationBuilder;
+  returning: () => MutationBuilder;
+  run: () => MutationBuilder;
+  set: (data: unknown) => MutationBuilder;
+  where: (cond: unknown) => MutationBuilder;
+};
 
-ensureSupersetHomeDirExists();
+type DbType = {
+  select: () => QueryBuilder;
+  insert: (table: unknown) => MutationBuilder;
+  update: (table: unknown) => MutationBuilder;
+  delete: (table: unknown) => MutationBuilder;
+};
 
-/**
- * Gets the migrations directory path.
- *
- * Path resolution strategy:
- * - Production (packaged .app): resources/migrations/
- * - Development (NODE_ENV=development): packages/local-db/drizzle/
- * - Preview (electron-vite preview): dist/resources/migrations/
- * - Test environment: Use monorepo path relative to __dirname
- */
-function getMigrationsDirectory(): string {
-	// Check if running in Electron (app.getAppPath exists)
-	const isElectron =
-		typeof app?.getAppPath === "function" &&
-		typeof app?.isPackaged === "boolean";
+const createQueryBuilder = (): QueryBuilder => {
+  const self = (): QueryBuilder => createQueryBuilder();
+  return {
+    from: () => createQueryBuilder(),
+    where: () => createQueryBuilder(),
+    all: () => [],
+    get: () => null,
+    orderBy: () => createQueryBuilder(),
+    limit: () => createQueryBuilder(),
+    innerJoin: () => createQueryBuilder(),
+    leftJoin: () => createQueryBuilder(),
+  };
+};
 
-	if (isElectron && app.isPackaged) {
-		return join(process.resourcesPath, "resources/migrations");
-	}
-
-	const isDev = env.NODE_ENV === "development";
-
-	if (isElectron && isDev) {
-		// Development: source files in monorepo
-		return join(app.getAppPath(), "../../packages/local-db/drizzle");
-	}
-
-	// Preview mode or test: __dirname is dist/main, so go up one level to dist/resources/migrations
-	const previewPath = join(__dirname, "../resources/migrations");
-	if (existsSync(previewPath)) {
-		return previewPath;
-	}
-
-	// Fallback: try monorepo path (for tests or dev without Electron)
-	// From apps/desktop/src/main/lib/local-db -> packages/local-db/drizzle
-	const monorepoPath = join(
-		__dirname,
-		"../../../../../packages/local-db/drizzle",
-	);
-	if (existsSync(monorepoPath)) {
-		return monorepoPath;
-	}
-
-	// Try Electron app path if available
-	if (isElectron) {
-		const srcPath = join(app.getAppPath(), "../../packages/local-db/drizzle");
-		if (existsSync(srcPath)) {
-			return srcPath;
-		}
-	}
-
-	console.warn(`[local-db] Migrations directory not found at: ${previewPath}`);
-	return previewPath;
-}
-
-const migrationsFolder = getMigrationsDirectory();
-
-const sqlite = new Database(DB_PATH);
-try {
-	chmodSync(DB_PATH, SUPERSET_SENSITIVE_FILE_MODE);
-} catch {
-	// Best-effort; directory permissions should still protect the DB.
-}
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = OFF");
-sqlite.function("uuid_v4", () => randomUUID());
-sqlite.function("uuid_is_valid_v4", (value: unknown) => {
-	if (typeof value !== "string") return 0;
-	if (!uuidValidate(value)) return 0;
-	return uuidVersion(value) === 4 ? 1 : 0;
+const createMutation = (): MutationBuilder => ({
+  values: () => createMutation(),
+  returning: () => createMutation(),
+  run: () => createMutation(),
+  set: () => createMutation(),
+  where: () => createMutation(),
 });
 
-console.log(`[local-db] Database initialized at: ${DB_PATH}`);
-console.log(`[local-db] Running migrations from: ${migrationsFolder}`);
+const stubDb: DbType = {
+  select: () => createQueryBuilder(),
+  insert: () => createMutation(),
+  update: () => createMutation(),
+  delete: () => createMutation(),
+};
 
-export const localDb = drizzle(sqlite, { schema });
+console.log("[local-db] Using in-memory stub database");
 
-try {
-	migrate(localDb, { migrationsFolder });
-} catch (error) {
-	console.error("[local-db] Migration failed:", error);
-}
-
-console.log("[local-db] Migrations complete");
-
-export type LocalDb = typeof localDb;
+export const localDb = stubDb;
+export type { DbType, QueryBuilder, MutationBuilder };

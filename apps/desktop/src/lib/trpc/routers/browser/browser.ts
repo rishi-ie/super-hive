@@ -1,180 +1,139 @@
 import { observable } from "@trpc/server/observable";
-import { session } from "electron";
-import { browserManager } from "main/lib/browser/browser-manager";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import { stubLog } from "../../stub-data";
 
 export const createBrowserRouter = () => {
 	return router({
 		register: publicProcedure
 			.input(z.object({ paneId: z.string(), webContentsId: z.number() }))
 			.mutation(({ input }) => {
-				browserManager.register(input.paneId, input.webContentsId);
+				stubLog("browser", "register", input);
 				return { success: true };
 			}),
 
 		unregister: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.mutation(({ input }) => {
-				browserManager.unregister(input.paneId);
+				stubLog("browser", "unregister", input);
 				return { success: true };
 			}),
 
 		navigate: publicProcedure
 			.input(z.object({ paneId: z.string(), url: z.string() }))
 			.mutation(({ input }) => {
-				browserManager.navigate(input.paneId, input.url);
+				stubLog("browser", "navigate", input);
 				return { success: true };
 			}),
 
 		goBack: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.mutation(({ input }) => {
-				const wc = browserManager.getWebContents(input.paneId);
-				if (wc?.canGoBack()) wc.goBack();
+				stubLog("browser", "goBack", input);
 				return { success: true };
 			}),
 
 		goForward: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.mutation(({ input }) => {
-				const wc = browserManager.getWebContents(input.paneId);
-				if (wc?.canGoForward()) wc.goForward();
+				stubLog("browser", "goForward", input);
 				return { success: true };
 			}),
 
 		reload: publicProcedure
 			.input(z.object({ paneId: z.string(), hard: z.boolean().optional() }))
 			.mutation(({ input }) => {
-				const wc = browserManager.getWebContents(input.paneId);
-				if (!wc) return { success: false };
-				if (input.hard) {
-					wc.reloadIgnoringCache();
-				} else {
-					wc.reload();
-				}
+				stubLog("browser", "reload", input);
 				return { success: true };
 			}),
 
 		screenshot: publicProcedure
 			.input(z.object({ paneId: z.string() }))
-			.mutation(async ({ input }) => {
-				const base64 = await browserManager.screenshot(input.paneId);
-				return { base64 };
+			.mutation(({ input }) => {
+				stubLog("browser", "screenshot", input);
+				return { dataUrl: "stub-screenshot" };
 			}),
 
 		evaluateJS: publicProcedure
 			.input(z.object({ paneId: z.string(), code: z.string() }))
-			.mutation(async ({ input }) => {
-				const result = await browserManager.evaluateJS(
-					input.paneId,
-					input.code,
-				);
-				return { result };
+			.mutation(({ input }) => {
+				stubLog("browser", "evaluateJS", input);
+				return { result: null };
 			}),
 
 		getConsoleLogs: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.query(({ input }) => {
-				return browserManager.getConsoleLogs(input.paneId);
+				stubLog("browser", "getConsoleLogs", input);
+				return [];
 			}),
 
 		consoleStream: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
+				stubLog("browser", "consoleStream", input);
 				return observable<{
 					level: string;
 					message: string;
 					timestamp: number;
 				}>((emit) => {
-					const handler = (entry: {
-						level: string;
-						message: string;
-						timestamp: number;
-					}) => {
-						emit.next(entry);
-					};
-					browserManager.on(`console:${input.paneId}`, handler);
-					return () => {
-						browserManager.off(`console:${input.paneId}`, handler);
-					};
+					return () => {};
 				});
 			}),
 
 		onNewWindow: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
+				stubLog("browser", "onNewWindow", input);
 				return observable<{ url: string }>((emit) => {
-					const handler = (url: string) => {
-						emit.next({ url });
-					};
-					browserManager.on(`new-window:${input.paneId}`, handler);
-					return () => {
-						browserManager.off(`new-window:${input.paneId}`, handler);
-					};
+					return () => {};
 				});
 			}),
 
 		onContextMenuAction: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
+				stubLog("browser", "onContextMenuAction", input);
 				return observable<{ action: string; url: string }>((emit) => {
-					const handler = (data: { action: string; url: string }) => {
-						emit.next(data);
-					};
-					browserManager.on(`context-menu-action:${input.paneId}`, handler);
-					return () => {
-						browserManager.off(`context-menu-action:${input.paneId}`, handler);
-					};
+					return () => {};
 				});
 			}),
 
 		onClosePane: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
+				stubLog("browser", "onClosePane", input);
 				return observable<void>((emit) => {
-					const handler = () => {
-						emit.next();
-					};
-					browserManager.on(`close-pane:${input.paneId}`, handler);
-					return () => {
-						browserManager.off(`close-pane:${input.paneId}`, handler);
-					};
+					return () => {};
 				});
 			}),
 
 		onReloadPane: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.subscription(({ input }) => {
+				stubLog("browser", "onReloadPane", input);
 				return observable<void>((emit) => {
-					const handler = () => {
-						emit.next();
-					};
-					browserManager.on(`reload-pane:${input.paneId}`, handler);
-					return () => {
-						browserManager.off(`reload-pane:${input.paneId}`, handler);
-					};
+					return () => {};
 				});
 			}),
 
 		openDevTools: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.mutation(({ input }) => {
-				browserManager.openDevTools(input.paneId);
+				stubLog("browser", "openDevTools", input);
 				return { success: true };
 			}),
 
 		getPageInfo: publicProcedure
 			.input(z.object({ paneId: z.string() }))
 			.query(({ input }) => {
-				const wc = browserManager.getWebContents(input.paneId);
-				if (!wc) return null;
+				stubLog("browser", "getPageInfo", input);
 				return {
-					url: wc.getURL(),
-					title: wc.getTitle(),
-					canGoBack: wc.canGoBack(),
-					canGoForward: wc.canGoForward(),
-					isLoading: wc.isLoading(),
+					url: "https://stub.url",
+					title: "Stub",
+					canGoBack: false,
+					canGoForward: false,
+					isLoading: false,
 				};
 			}),
 
@@ -184,25 +143,8 @@ export const createBrowserRouter = () => {
 					type: z.enum(["cookies", "cache", "storage", "all"]),
 				}),
 			)
-			.mutation(async ({ input }) => {
-				const ses = session.fromPartition("persist:superset");
-				switch (input.type) {
-					case "cookies":
-						await ses.clearStorageData({ storages: ["cookies"] });
-						break;
-					case "cache":
-						await ses.clearCache();
-						break;
-					case "storage":
-						await ses.clearStorageData({
-							storages: ["localstorage", "indexdb"],
-						});
-						break;
-					case "all":
-						await ses.clearStorageData();
-						await ses.clearCache();
-						break;
-				}
+			.mutation(({ input }) => {
+				stubLog("browser", "clearBrowsingData", input);
 				return { success: true };
 			}),
 	});

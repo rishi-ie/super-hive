@@ -1,17 +1,7 @@
-import { TRPCError } from "@trpc/server";
 import type { ChangedFile, GitChangesStatus } from "shared/changes-types";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { assertRegisteredWorktree } from "./security/path-validation";
-import {
-	clearInFlightStatus,
-	getCachedStatus,
-	getInFlightStatus,
-	makeStatusCacheKey,
-	setCachedStatus,
-	setInFlightStatus,
-} from "./utils/status-cache";
-import { runGitTask } from "./workers/git-task-runner";
+import { stubLog } from "../../stub-data";
 
 export const createStatusRouter = () => {
 	return router({
@@ -23,60 +13,16 @@ export const createStatusRouter = () => {
 				}),
 			)
 			.query(async ({ input }): Promise<GitChangesStatus> => {
-				assertRegisteredWorktree(input.worktreePath);
-
-				const defaultBranch = input.defaultBranch || "main";
-				const cacheKey = makeStatusCacheKey(input.worktreePath, defaultBranch);
-				const cached = getCachedStatus(cacheKey);
-				if (cached) {
-					return cached;
-				}
-
-				const inFlight = getInFlightStatus(cacheKey);
-				if (inFlight) {
-					return inFlight;
-				}
-
-				let statusPromise!: Promise<GitChangesStatus>;
-				statusPromise = (async (): Promise<GitChangesStatus> => {
-					try {
-						const result = await runGitTask(
-							"getStatus",
-							{
-								worktreePath: input.worktreePath,
-								defaultBranch,
-							},
-							{
-								dedupeKey: cacheKey,
-								strategy: "coalesce",
-								timeoutMs: 45_000,
-							},
-						);
-
-						// Guard against stale in-flight completion after explicit invalidation.
-						if (getInFlightStatus(cacheKey) === statusPromise) {
-							setCachedStatus(cacheKey, result);
-						}
-						return result;
-					} catch (error) {
-						if (error instanceof Error && error.name === "NotGitRepoError") {
-							throw new TRPCError({
-								code: "BAD_REQUEST",
-								message: error.message,
-							});
-						}
-						throw error;
-					}
-				})();
-
-				setInFlightStatus(cacheKey, statusPromise);
-				try {
-					return await statusPromise;
-				} finally {
-					if (getInFlightStatus(cacheKey) === statusPromise) {
-						clearInFlightStatus(cacheKey);
-					}
-				}
+				stubLog("changes.status", "getStatus", input);
+				return {
+					current: "main",
+					tracking: "origin/main",
+					ahead: 0,
+					behind: 0,
+					staged: [],
+					unstaged: [],
+					untracked: [],
+				};
 			}),
 
 		getCommitFiles: publicProcedure
@@ -87,30 +33,8 @@ export const createStatusRouter = () => {
 				}),
 			)
 			.query(async ({ input }): Promise<ChangedFile[]> => {
-				assertRegisteredWorktree(input.worktreePath);
-
-				try {
-					return await runGitTask(
-						"getCommitFiles",
-						{
-							worktreePath: input.worktreePath,
-							commitHash: input.commitHash,
-						},
-						{
-							dedupeKey: `${input.worktreePath}:${input.commitHash}`,
-							strategy: "coalesce",
-							timeoutMs: 30_000,
-						},
-					);
-				} catch (error) {
-					if (error instanceof Error && error.name === "NotGitRepoError") {
-						throw new TRPCError({
-							code: "BAD_REQUEST",
-							message: error.message,
-						});
-					}
-					throw error;
-				}
+				stubLog("changes.status", "getCommitFiles", input);
+				return [];
 			}),
 	});
 };

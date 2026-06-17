@@ -1,10 +1,11 @@
-import { getHostId } from "@superset/shared/host-info";
 import { publicProcedure, router } from "..";
+import { STUB_MACHINE_ID, stubLog } from "../../stub-data";
 
 export const createDeviceRouter = () => {
 	return router({
 		getMachineId: publicProcedure.query((): { machineId: string } => {
-			return { machineId: getHostId() };
+			stubLog("device", "getMachineId");
+			return { machineId: STUB_MACHINE_ID };
 		}),
 	});
 };

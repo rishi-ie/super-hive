@@ -1,13 +1,7 @@
-import { appState } from "main/lib/app-state";
-import type { TabsState, ThemeState } from "main/lib/app-state/schemas";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import { stubLog } from "../../stub-data";
 
-/**
- * Zod schema for FileViewerState persistence.
- * Note: initialLine/initialColumn from shared/tabs-types.ts are intentionally
- * omitted as they are transient (applied once on open, not persisted).
- */
 const fileViewerStateSchema = z.object({
 	filePath: z.string(),
 	viewMode: z.enum(["rendered", "raw", "diff"]),
@@ -30,9 +24,6 @@ const chatLaunchConfigSchema = z.object({
 	retryCount: z.number().int().min(0).optional(),
 });
 
-/**
- * Zod schema for Pane
- */
 const paneSchema = z.object({
 	id: z.string(),
 	tabId: z.string(),
@@ -87,9 +78,6 @@ const paneSchema = z.object({
 		.optional(),
 });
 
-/**
- * Zod schema for MosaicNode<string> (recursive tree structure for pane layouts)
- */
 type MosaicNode =
 	| string
 	| {
@@ -100,7 +88,7 @@ type MosaicNode =
 	  };
 const mosaicNodeSchema: z.ZodType<MosaicNode> = z.lazy(() =>
 	z.union([
-		z.string(), // Leaf node (paneId)
+		z.string(),
 		z.object({
 			direction: z.enum(["row", "column"]),
 			first: mosaicNodeSchema,
@@ -110,9 +98,6 @@ const mosaicNodeSchema: z.ZodType<MosaicNode> = z.lazy(() =>
 	]),
 );
 
-/**
- * Zod schema for Tab (extends BaseTab with layout)
- */
 const tabSchema = z.object({
 	id: z.string(),
 	name: z.string(),
@@ -122,9 +107,6 @@ const tabSchema = z.object({
 	layout: mosaicNodeSchema,
 });
 
-/**
- * Zod schema for TabsState
- */
 const tabsStateSchema = z.object({
 	tabs: z.array(tabSchema),
 	panes: z.record(z.string(), paneSchema),
@@ -133,9 +115,6 @@ const tabsStateSchema = z.object({
 	tabHistoryStacks: z.record(z.string(), z.array(z.string())),
 });
 
-/**
- * Zod schema for UI colors
- */
 const uiColorsSchema = z.object({
 	background: z.string(),
 	foreground: z.string(),
@@ -177,9 +156,6 @@ const uiColorsSchema = z.object({
 	highlightForeground: z.string().optional(),
 });
 
-/**
- * Zod schema for terminal colors
- */
 const terminalColorsSchema = z.object({
 	background: z.string(),
 	foreground: z.string(),
@@ -205,9 +181,6 @@ const terminalColorsSchema = z.object({
 	brightWhite: z.string(),
 });
 
-/**
- * Zod schema for Theme
- */
 const themeSchema = z.object({
 	id: z.string(),
 	name: z.string(),
@@ -221,9 +194,6 @@ const themeSchema = z.object({
 	isCustom: z.boolean().optional(),
 });
 
-/**
- * Zod schema for ThemeState
- */
 const themeStateSchema = z.object({
 	activeThemeId: z.string(),
 	customThemes: z.array(themeSchema),
@@ -231,45 +201,110 @@ const themeStateSchema = z.object({
 	systemDarkThemeId: z.string().optional(),
 });
 
-/**
- * UI State router - manages tabs and theme persistence via lowdb
- */
+const stubTheme = {
+	id: "stub-theme",
+	name: "Stub Theme",
+	type: "dark" as const,
+	ui: {
+		background: "#000000",
+		foreground: "#ffffff",
+		card: "#1a1a1a",
+		cardForeground: "#ffffff",
+		popover: "#1a1a1a",
+		popoverForeground: "#ffffff",
+		primary: "#007aff",
+		primaryForeground: "#ffffff",
+		secondary: "#2a2a2a",
+		secondaryForeground: "#ffffff",
+		muted: "#2a2a2a",
+		mutedForeground: "#888888",
+		accent: "#007aff",
+		accentForeground: "#ffffff",
+		tertiary: "#3a3a3a",
+		tertiaryActive: "#4a4a4a",
+		destructive: "#ff3b30",
+		destructiveForeground: "#ffffff",
+		border: "#3a3a3a",
+		input: "#2a2a2a",
+		ring: "#007aff",
+		sidebar: "#000000",
+		sidebarForeground: "#ffffff",
+		sidebarPrimary: "#007aff",
+		sidebarPrimaryForeground: "#ffffff",
+		sidebarAccent: "#2a2a2a",
+		sidebarAccentForeground: "#ffffff",
+		sidebarBorder: "#3a3a3a",
+		sidebarRing: "#007aff",
+		chart1: "#007aff",
+		chart2: "#34c759",
+		chart3: "#ff9500",
+		chart4: "#ff3b30",
+		chart5: "#5856d6",
+		highlightMatch: "#007aff",
+		highlightActive: "#007aff",
+	},
+	terminal: {
+		background: "#000000",
+		foreground: "#ffffff",
+		cursor: "#ffffff",
+		black: "#000000",
+		red: "#ff3b30",
+		green: "#34c759",
+		yellow: "#ff9500",
+		blue: "#007aff",
+		magenta: "#af52de",
+		cyan: "#5ac8fa",
+		white: "#ffffff",
+		brightBlack: "#666666",
+		brightRed: "#ff6961",
+		brightGreen: "#a8e063",
+		brightYellow: "#ffd93d",
+		brightBlue: "#6eb5ff",
+		brightMagenta: "#de5ce6",
+		brightCyan: "#9aeeef",
+		brightWhite: "#ffffff",
+	},
+};
+
 export const createUiStateRouter = () => {
 	return router({
-		// Tabs state procedures
 		tabs: router({
-			get: publicProcedure.query((): TabsState => {
-				return appState.data.tabsState;
+			get: publicProcedure.query(() => {
+				stubLog("ui-state", "tabs.get");
+				return null;
 			}),
 
 			set: publicProcedure
 				.input(tabsStateSchema)
-				.mutation(async ({ input }) => {
-					appState.data.tabsState = input;
-					await appState.write();
+				.mutation(({ input }) => {
+					stubLog("ui-state", "tabs.set", input);
 					return { success: true };
 				}),
 		}),
 
-		// Theme state procedures
 		theme: router({
-			get: publicProcedure.query((): ThemeState => {
-				return appState.data.themeState;
+			get: publicProcedure.query(() => {
+				stubLog("ui-state", "theme.get");
+				return {
+					activeThemeId: stubTheme.id,
+					customThemes: [],
+					systemLightThemeId: undefined,
+					systemDarkThemeId: undefined,
+				};
 			}),
 
 			set: publicProcedure
 				.input(themeStateSchema)
-				.mutation(async ({ input }) => {
-					appState.data.themeState = input;
-					await appState.write();
+				.mutation(({ input }) => {
+					stubLog("ui-state", "theme.set", input);
 					return { success: true };
 				}),
 		}),
 
-		// Legacy hotkeys state (read-only, for one-time migration to localStorage)
 		hotkeys: router({
 			get: publicProcedure.query(() => {
-				return appState.data.hotkeysState;
+				stubLog("ui-state", "hotkeys.get");
+				return null;
 			}),
 		}),
 	});

@@ -1,13 +1,14 @@
-import { setUserId } from "main/lib/analytics";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import { stubLog } from "../../stub-data";
 
 export const createAnalyticsRouter = () => {
 	return router({
 		setUserId: publicProcedure
 			.input(z.object({ userId: z.string().nullable() }))
 			.mutation(({ input }) => {
-				setUserId(input.userId);
+				stubLog("analytics", "setUserId", input);
+				return { success: true };
 			}),
 	});
 };

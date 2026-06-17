@@ -1,18 +1,10 @@
 /**
- * Local Workspace Runtime
+ * Local Workspace Runtime - STUB IMPLEMENTATION
  *
- * This is the local implementation of WorkspaceRuntime that wraps
- * DaemonTerminalManager (persistent terminals).
- *
- * Backend selection is fixed to the daemon-based manager.
- * The runtime caches the backend and exposes it through the provider-neutral
- * TerminalRuntime interface.
+ * This is a stub that returns dummy data for all terminal operations.
  */
 
-import {
-	type DaemonTerminalManager,
-	getDaemonTerminalManager,
-} from "../terminal";
+import { EventEmitter } from "node:events";
 import type {
 	TerminalCapabilities,
 	TerminalManagement,
@@ -20,219 +12,102 @@ import type {
 	WorkspaceRuntime,
 	WorkspaceRuntimeId,
 } from "./types";
+import type { ListSessionsResponse } from "../terminal-host/types";
 
-// =============================================================================
-// Terminal Runtime Adapter
-// =============================================================================
+const STUB_CAPABILITIES: TerminalCapabilities = {
+	persistent: true,
+	coldRestore: true,
+};
 
-/**
- * Adapts DaemonTerminalManager to the TerminalRuntime interface.
- *
- * This adapter:
- * 1. Wraps the underlying manager with the common interface
- * 2. Exposes management capabilities only when available (daemon mode)
- * 3. Provides capability flags for UI feature detection
- */
-class LocalTerminalRuntime implements TerminalRuntime {
-	private readonly backend: DaemonTerminalManager;
+const STUB_MANAGEMENT: TerminalManagement = {
+	listSessions: async () => {
+		console.log("[STUB] LocalTerminalRuntime.listSessions");
+		return { sessions: [] };
+	},
+	killAllSessions: async () => {
+		console.log("[STUB] LocalTerminalRuntime.killAllSessions");
+	},
+	resetHistoryPersistence: async () => {
+		console.log("[STUB] LocalTerminalRuntime.resetHistoryPersistence");
+	},
+};
 
-	readonly management: TerminalManagement;
-	readonly capabilities: TerminalCapabilities;
+class StubTerminalRuntime
+	extends EventEmitter
+	implements TerminalRuntime
+{
+	readonly management: TerminalManagement = STUB_MANAGEMENT;
+	readonly capabilities: TerminalCapabilities = STUB_CAPABILITIES;
 
-	constructor(backend: DaemonTerminalManager) {
-		this.backend = backend;
-
-		// Capabilities are always daemon-backed
-		this.capabilities = {
-			persistent: true,
-			coldRestore: true,
+	createOrAttach = async () => {
+		console.log("[STUB] LocalTerminalRuntime.createOrAttach");
+		return {
+			isNew: true,
+			scrollback: "",
+			wasRecovered: false,
 		};
-
-		this.management = {
-			listSessions: () => backend.listDaemonSessions(),
-			killAllSessions: () => backend.forceKillAll(),
-			resetHistoryPersistence: () => backend.resetHistoryPersistence(),
-		};
-	}
-
-	// ===========================================================================
-	// Session Operations (delegate to backend)
-	// ===========================================================================
-
-	createOrAttach: TerminalRuntime["createOrAttach"] = (params) => {
-		return this.backend.createOrAttach(params);
 	};
 
-	cancelCreateOrAttach: TerminalRuntime["cancelCreateOrAttach"] = (params) => {
-		this.backend.cancelCreateOrAttach(params);
+	cancelCreateOrAttach = (_params: { paneId: string; requestId: string }) => {
+		console.log("[STUB] LocalTerminalRuntime.cancelCreateOrAttach");
 	};
 
-	write: TerminalRuntime["write"] = (params) => {
-		return this.backend.write(params);
+	write = (_params: { paneId: string; data: string }) => {
+		console.log("[STUB] LocalTerminalRuntime.write");
 	};
 
-	resize: TerminalRuntime["resize"] = (params) => {
-		return this.backend.resize(params);
+	resize = (_params: { paneId: string; cols: number; rows: number }) => {
+		console.log("[STUB] LocalTerminalRuntime.resize");
 	};
 
-	signal: TerminalRuntime["signal"] = (params) => {
-		return this.backend.signal(params);
+	signal = (_params: { paneId: string; signal?: string }) => {
+		console.log("[STUB] LocalTerminalRuntime.signal");
 	};
 
-	kill: TerminalRuntime["kill"] = (params) => {
-		return this.backend.kill(params);
+	kill = async (_params: { paneId: string }) => {
+		console.log("[STUB] LocalTerminalRuntime.kill");
 	};
 
-	detach: TerminalRuntime["detach"] = (params) => {
-		return this.backend.detach(params);
+	detach = (_params: { paneId: string }) => {
+		console.log("[STUB] LocalTerminalRuntime.detach");
 	};
 
-	clearScrollback: TerminalRuntime["clearScrollback"] = (params) => {
-		return this.backend.clearScrollback(params);
+	clearScrollback = (_params: { paneId: string }) => {
+		console.log("[STUB] LocalTerminalRuntime.clearScrollback");
 	};
 
-	ackColdRestore: TerminalRuntime["ackColdRestore"] = (paneId) => {
-		return this.backend.ackColdRestore(paneId);
+	ackColdRestore = (_paneId: string) => {
+		console.log("[STUB] LocalTerminalRuntime.ackColdRestore");
 	};
 
-	getSession: TerminalRuntime["getSession"] = (paneId) => {
-		return this.backend.getSession(paneId);
+	getSession = (_paneId: string) => {
+		console.log("[STUB] LocalTerminalRuntime.getSession");
+		return { isAlive: true, cwd: "/stub", lastActive: Date.now() };
 	};
 
-	// ===========================================================================
-	// Workspace Operations (delegate to backend)
-	// ===========================================================================
-
-	killByWorkspaceId: TerminalRuntime["killByWorkspaceId"] = (workspaceId) => {
-		return this.backend.killByWorkspaceId(workspaceId);
+	killByWorkspaceId = async (_workspaceId: string) => {
+		console.log("[STUB] LocalTerminalRuntime.killByWorkspaceId");
+		return { killed: 0, failed: 0 };
 	};
 
-	getSessionCountByWorkspaceId: TerminalRuntime["getSessionCountByWorkspaceId"] =
-		(workspaceId) => {
-			return this.backend.getSessionCountByWorkspaceId(workspaceId);
-		};
-
-	refreshPromptsForWorkspace: TerminalRuntime["refreshPromptsForWorkspace"] = (
-		workspaceId,
-	) => {
-		return this.backend.refreshPromptsForWorkspace(workspaceId);
+	getSessionCountByWorkspaceId = async (_workspaceId: string) => {
+		console.log("[STUB] LocalTerminalRuntime.getSessionCountByWorkspaceId");
+		return 0;
 	};
 
-	// ===========================================================================
-	// Event Source (delegate to backend EventEmitter)
-	// ===========================================================================
+	refreshPromptsForWorkspace = (_workspaceId: string) => {
+		console.log("[STUB] LocalTerminalRuntime.refreshPromptsForWorkspace");
+	};
 
-	// EventEmitter methods - delegate to backend
-	// Use method syntax to preserve `this` return type correctly
-	on(event: string | symbol, listener: (...args: unknown[]) => void): this {
-		this.backend.on(event, listener);
-		return this;
-	}
-
-	off(event: string | symbol, listener: (...args: unknown[]) => void): this {
-		this.backend.off(event, listener);
-		return this;
-	}
-
-	once(event: string | symbol, listener: (...args: unknown[]) => void): this {
-		this.backend.once(event, listener);
-		return this;
-	}
-
-	emit(event: string | symbol, ...args: unknown[]): boolean {
-		return this.backend.emit(event, ...args);
-	}
-
-	addListener(
-		event: string | symbol,
-		listener: (...args: unknown[]) => void,
-	): this {
-		this.backend.addListener(event, listener);
-		return this;
-	}
-
-	removeListener(
-		event: string | symbol,
-		listener: (...args: unknown[]) => void,
-	): this {
-		this.backend.removeListener(event, listener);
-		return this;
-	}
-
-	removeAllListeners(event?: string | symbol): this {
-		this.backend.removeAllListeners(event);
-		return this;
-	}
-
-	setMaxListeners(n: number): this {
-		this.backend.setMaxListeners(n);
-		return this;
-	}
-
-	getMaxListeners(): number {
-		return this.backend.getMaxListeners();
-	}
-
-	// biome-ignore lint/complexity/noBannedTypes: EventEmitter interface requires Function[]
-	listeners(event: string | symbol): Function[] {
-		return this.backend.listeners(event);
-	}
-
-	// biome-ignore lint/complexity/noBannedTypes: EventEmitter interface requires Function[]
-	rawListeners(event: string | symbol): Function[] {
-		return this.backend.rawListeners(event);
-	}
-
-	listenerCount(
-		event: string | symbol,
-		listener?: (...args: unknown[]) => void,
-	): number {
-		return this.backend.listenerCount(event, listener);
-	}
-
-	prependListener(
-		event: string | symbol,
-		listener: (...args: unknown[]) => void,
-	): this {
-		this.backend.prependListener(event, listener);
-		return this;
-	}
-
-	prependOnceListener(
-		event: string | symbol,
-		listener: (...args: unknown[]) => void,
-	): this {
-		this.backend.prependOnceListener(event, listener);
-		return this;
-	}
-
-	eventNames(): (string | symbol)[] {
-		return this.backend.eventNames();
-	}
+	cleanup = async () => {
+		console.log("[STUB] LocalTerminalRuntime.cleanup");
+	};
 
 	detachAllListeners(): void {
-		this.backend.detachAllListeners();
+		console.log("[STUB] LocalTerminalRuntime.detachAllListeners");
 	}
-
-	// ===========================================================================
-	// Cleanup
-	// ===========================================================================
-
-	cleanup: TerminalRuntime["cleanup"] = () => {
-		return this.backend.cleanup();
-	};
 }
 
-// =============================================================================
-// Local Workspace Runtime
-// =============================================================================
-
-/**
- * Local workspace runtime implementation.
- *
- * This provides the WorkspaceRuntime interface for local workspaces,
- * wrapping the daemon-based terminal manager.
- */
 export class LocalWorkspaceRuntime implements WorkspaceRuntime {
 	readonly id: WorkspaceRuntimeId;
 	readonly terminal: TerminalRuntime;
@@ -240,15 +115,9 @@ export class LocalWorkspaceRuntime implements WorkspaceRuntime {
 
 	constructor() {
 		this.id = "local";
-
-		const backend = getDaemonTerminalManager();
-
-		// Create terminal runtime adapter
-		this.terminal = new LocalTerminalRuntime(backend);
-
-		// Aggregate capabilities
+		this.terminal = new StubTerminalRuntime();
 		this.capabilities = {
-			terminal: this.terminal.capabilities,
+			terminal: STUB_CAPABILITIES,
 		};
 	}
 }

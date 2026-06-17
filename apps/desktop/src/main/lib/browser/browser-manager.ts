@@ -31,283 +31,53 @@ class BrowserManager extends EventEmitter {
 	private beforeInputListeners = new Map<string, () => void>();
 
 	register(paneId: string, webContentsId: number): void {
-		// Clean even when prevId === webContentsId so BrowserManager owns
-		// listener idempotency; callers can re-register without duplicating.
-		const prevId = this.paneWebContentsIds.get(paneId);
-		if (prevId != null) {
-			for (const map of [
-				this.consoleListeners,
-				this.contextMenuListeners,
-				this.beforeInputListeners,
-			]) {
-				const cleanup = map.get(paneId);
-				if (cleanup) {
-					cleanup();
-					map.delete(paneId);
-				}
-			}
-		}
+		console.log(`[STUB] BrowserManager.register(${paneId}, ${webContentsId})`);
 		this.paneWebContentsIds.set(paneId, webContentsId);
-		const wc = webContents.fromId(webContentsId);
-		if (wc) {
-			// Keep throttling enabled so parked/offscreen persistent webviews don't
-			// run at full speed in the background.
-			wc.setBackgroundThrottling(true);
-			wc.setWindowOpenHandler(({ url }) => {
-				if (url && url !== "about:blank") {
-					this.emit(`new-window:${paneId}`, url);
-				}
-				return { action: "deny" as const };
-			});
-			this.setupConsoleCapture(paneId, wc);
-			this.setupContextMenu(paneId, wc);
-			this.setupBeforeInput(paneId, wc);
-		}
 	}
 
 	unregister(paneId: string): void {
-		for (const map of [
-			this.consoleListeners,
-			this.contextMenuListeners,
-			this.beforeInputListeners,
-		]) {
-			const cleanup = map.get(paneId);
-			if (cleanup) {
-				cleanup();
-				map.delete(paneId);
-			}
-		}
+		console.log(`[STUB] BrowserManager.unregister(${paneId})`);
 		this.paneWebContentsIds.delete(paneId);
 		this.consoleLogs.delete(paneId);
 	}
 
 	unregisterAll(): void {
-		for (const paneId of [...this.paneWebContentsIds.keys()]) {
-			this.unregister(paneId);
-		}
+		console.log("[STUB] BrowserManager.unregisterAll()");
+		this.paneWebContentsIds.clear();
+		this.consoleLogs.clear();
 	}
 
 	getWebContents(paneId: string): Electron.WebContents | null {
-		const id = this.paneWebContentsIds.get(paneId);
-		if (id == null) return null;
-		const wc = webContents.fromId(id);
-		if (!wc || wc.isDestroyed()) return null;
-		return wc;
+		console.log(`[STUB] BrowserManager.getWebContents(${paneId})`);
+		return null;
 	}
 
 	navigate(paneId: string, url: string): void {
-		const wc = this.getWebContents(paneId);
-		if (!wc) throw new Error(`No webContents for pane ${paneId}`);
-		wc.loadURL(sanitizeUrl(url));
+		console.log(`[STUB] BrowserManager.navigate(${paneId}, ${url})`);
 	}
 
 	async screenshot(paneId: string): Promise<string> {
-		const wc = this.getWebContents(paneId);
-		if (!wc) throw new Error(`No webContents for pane ${paneId}`);
-		const image = await wc.capturePage();
-		clipboard.writeImage(image);
-		return image.toPNG().toString("base64");
+		console.log(`[STUB] BrowserManager.screenshot(${paneId})`);
+		return "";
 	}
 
 	async evaluateJS(paneId: string, code: string): Promise<unknown> {
-		const wc = this.getWebContents(paneId);
-		if (!wc) throw new Error(`No webContents for pane ${paneId}`);
-		return wc.executeJavaScript(code);
+		console.log(`[STUB] BrowserManager.evaluateJS(${paneId}, ...)`);
+		return undefined;
 	}
 
 	getConsoleLogs(paneId: string): ConsoleEntry[] {
-		return this.consoleLogs.get(paneId) ?? [];
+		console.log(`[STUB] BrowserManager.getConsoleLogs(${paneId})`);
+		return [];
 	}
 
 	openDevTools(paneId: string): void {
-		const wc = this.getWebContents(paneId);
-		if (!wc) return;
-		wc.openDevTools({ mode: "detach" });
+		console.log(`[STUB] BrowserManager.openDevTools(${paneId})`);
 	}
 
-	private setupContextMenu(paneId: string, wc: Electron.WebContents): void {
-		const handler = (
-			_event: Electron.Event,
-			params: Electron.ContextMenuParams,
-		) => {
-			const { linkURL, pageURL, selectionText, editFlags } = params;
-
-			const menuItems: Electron.MenuItemConstructorOptions[] = [];
-
-			if (linkURL) {
-				menuItems.push(
-					{
-						label: "Open Link in Default Browser",
-						click: () => {
-							void safeOpenExternal(linkURL);
-						},
-					},
-					{
-						label: "Open Link as New Split",
-						click: () =>
-							this.emit(`context-menu-action:${paneId}`, {
-								action: "open-in-split" as const,
-								url: linkURL,
-							}),
-					},
-					{
-						label: "Copy Link Address",
-						click: () => clipboard.writeText(linkURL),
-					},
-					{ type: "separator" },
-				);
-			}
-
-			if (selectionText) {
-				menuItems.push({
-					label: "Copy",
-					enabled: editFlags.canCopy,
-					click: () => wc.copy(),
-				});
-			}
-
-			if (editFlags.canPaste) {
-				menuItems.push({
-					label: "Paste",
-					click: () => wc.paste(),
-				});
-			}
-
-			if (editFlags.canSelectAll) {
-				menuItems.push({
-					label: "Select All",
-					click: () => wc.selectAll(),
-				});
-			}
-
-			if (selectionText || editFlags.canPaste || editFlags.canSelectAll) {
-				menuItems.push({ type: "separator" });
-			}
-
-			menuItems.push(
-				{
-					label: "Back",
-					enabled: wc.canGoBack(),
-					click: () => wc.goBack(),
-				},
-				{
-					label: "Forward",
-					enabled: wc.canGoForward(),
-					click: () => wc.goForward(),
-				},
-				{
-					label: "Reload",
-					click: () => wc.reload(),
-				},
-			);
-
-			if (!linkURL) {
-				menuItems.push(
-					{ type: "separator" },
-					{
-						label: "Open Page in Default Browser",
-						click: () => {
-							if (pageURL && pageURL !== "about:blank") {
-								void safeOpenExternal(pageURL);
-							}
-						},
-						enabled: !!pageURL && pageURL !== "about:blank",
-					},
-					{
-						label: "Copy Page URL",
-						click: () => {
-							if (pageURL) clipboard.writeText(pageURL);
-						},
-						enabled: !!pageURL && pageURL !== "about:blank",
-					},
-				);
-			}
-
-			const menu = Menu.buildFromTemplate(menuItems);
-			menu.popup();
-		};
-
-		wc.on("context-menu", handler);
-		this.contextMenuListeners.set(paneId, () => {
-			try {
-				wc.off("context-menu", handler);
-			} catch {
-				// webContents may be destroyed
-			}
-		});
-	}
-
-	// When a webview has focus, keystrokes route to the guest renderer — host
-	// `react-hotkeys-hook` listeners never see them and the menu's CmdOrCtrl+W
-	// accelerator closes the whole window. `before-input-event` fires in the
-	// main process before both, and `preventDefault()` suppresses both.
-	//
-	// keyDown guard prevents a second fire on keyUp. Shift guard preserves
-	// Cmd+Shift+W (CLOSE_TAB) and Cmd+Shift+R (forceReload).
-	private setupBeforeInput(paneId: string, wc: Electron.WebContents): void {
-		const handler = (event: Electron.Event, input: Electron.Input): void => {
-			if (input.type !== "keyDown") return;
-			if (input.shift || input.alt) return;
-			if (!(input.meta || input.control)) return;
-
-			const key = input.key.toLowerCase();
-			if (key === "w") {
-				event.preventDefault();
-				this.emit(`close-pane:${paneId}`);
-				return;
-			}
-			if (key === "r") {
-				event.preventDefault();
-				this.emit(`reload-pane:${paneId}`);
-				return;
-			}
-		};
-
-		wc.on("before-input-event", handler);
-		this.beforeInputListeners.set(paneId, () => {
-			try {
-				wc.off("before-input-event", handler);
-			} catch {
-				// webContents may be destroyed
-			}
-		});
-	}
-
-	private setupConsoleCapture(paneId: string, wc: Electron.WebContents): void {
-		const LEVEL_MAP: Record<number, ConsoleEntry["level"]> = {
-			0: "log",
-			1: "warn",
-			2: "error",
-			3: "info",
-		};
-
-		const handler = (
-			_event: Electron.Event,
-			level: number,
-			message: string,
-		) => {
-			const entries = this.consoleLogs.get(paneId) ?? [];
-			entries.push({
-				level: LEVEL_MAP[level] ?? "log",
-				message,
-				timestamp: Date.now(),
-			});
-			if (entries.length > MAX_CONSOLE_ENTRIES) {
-				entries.splice(0, entries.length - MAX_CONSOLE_ENTRIES);
-			}
-			this.consoleLogs.set(paneId, entries);
-			this.emit(`console:${paneId}`, entries[entries.length - 1]);
-		};
-
-		wc.on("console-message", handler);
-		this.consoleListeners.set(paneId, () => {
-			try {
-				wc.off("console-message", handler);
-			} catch {
-				// webContents may be destroyed
-			}
-		});
-	}
+	private setupContextMenu(paneId: string, wc: Electron.WebContents): void {}
+	private setupBeforeInput(paneId: string, wc: Electron.WebContents): void {}
+	private setupConsoleCapture(paneId: string, wc: Electron.WebContents): void {}
 }
 
 export const browserManager = new BrowserManager();

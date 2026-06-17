@@ -34,968 +34,142 @@ interface PendingCreateOrAttach {
 }
 
 export class DaemonTerminalManager extends EventEmitter {
-	private client!: TerminalHostClient;
 	private sessions = new Map<string, SessionInfo>();
 	private pendingSessions = new Map<string, PendingCreateOrAttach>();
 	private killedSessionTombstones = new Map<string, number>();
-	private createOrAttachLimiter = new PrioritySemaphore(
-		CREATE_OR_ATTACH_CONCURRENCY,
-	);
 	private daemonAliveSessionIds = new Set<string>();
 	private daemonSessionIdsHydrated = false;
-
-	private historyManager = new HistoryManager();
-
 	private coldRestoreInfo = new Map<string, ColdRestoreInfo>();
 	private cleanupTimeouts = new Map<string, NodeJS.Timeout>();
 
 	constructor() {
 		super();
-		this.initializeClient();
-	}
-
-	private recordKilledSession(paneId: string): void {
-		this.killedSessionTombstones.delete(paneId);
-		this.killedSessionTombstones.set(paneId, Date.now());
-		if (this.killedSessionTombstones.size > MAX_KILLED_SESSION_TOMBSTONES) {
-			const oldest = this.killedSessionTombstones.keys().next().value;
-			if (oldest) {
-				this.killedSessionTombstones.delete(oldest);
-			}
-		}
-
-		const session = this.sessions.get(paneId);
-		if (session) {
-			session.exitReason = "killed";
-			session.killedByUserAt = Date.now();
-		}
-	}
-
-	private isSessionKilled(paneId: string): boolean {
-		return this.killedSessionTombstones.has(paneId);
-	}
-
-	private clearKilledSession(paneId: string): void {
-		this.killedSessionTombstones.delete(paneId);
-	}
-
-	private initializeClient(): void {
-		this.client = getTerminalHostClient();
-		this.setupClientEventHandlers();
-	}
-
-	private async listExistingDaemonSessions(): Promise<ListSessionsResponse> {
-		// `listSessionsIfRunning()` returns null only when no daemon/socket exists.
-		// Probe contention and other failures bubble up so callers can choose whether
-		// to retry, fall back, or fail closed.
-		const response = await this.client.listSessionsIfRunning();
-		return response ?? { sessions: [] };
+		console.log("[STUB] DaemonTerminalManager constructed");
 	}
 
 	async reconcileOnStartup(): Promise<void> {
-		try {
-			const response = await this.listExistingDaemonSessions();
-			if (response.sessions.length === 0) {
-				this.daemonAliveSessionIds.clear();
-				this.daemonSessionIdsHydrated = true;
-				return;
-			}
-
-			console.log(
-				`[DaemonTerminalManager] Found ${response.sessions.length} sessions from previous run`,
-			);
-
-			const validWorkspaceIds = new Set(
-				localDb
-					.select({ id: workspaces.id })
-					.from(workspaces)
-					.all()
-					.map((w) => w.id),
-			);
-
-			let orphanedCount = 0;
-			for (const session of response.sessions) {
-				if (!validWorkspaceIds.has(session.workspaceId)) {
-					console.log(
-						`[DaemonTerminalManager] Killing orphaned session ${session.sessionId} (workspace deleted)`,
-					);
-					await this.client.kill({ sessionId: session.sessionId });
-					orphanedCount++;
-				}
-			}
-
-			// Cache the daemon session inventory so createOrAttach can fast-path
-			// existing sessions without touching disk (cold restore check only
-			// applies when the daemon does not have a session).
-			const preservedSessions = response.sessions.filter(
-				(session) =>
-					validWorkspaceIds.has(session.workspaceId) && session.isAlive,
-			);
-			this.daemonAliveSessionIds = new Set(
-				preservedSessions.map((session) => session.sessionId),
-			);
-			this.daemonSessionIdsHydrated = true;
-
-			// Enable port scanning before user opens terminal tabs
-			for (const session of preservedSessions) {
-				portManager.upsertSession(
-					session.paneId,
-					session.workspaceId,
-					session.pid,
-				);
-			}
-
-			const preservedCount = response.sessions.length - orphanedCount;
-			if (preservedCount > 0) {
-				console.log(
-					`[DaemonTerminalManager] Preserving ${preservedCount} sessions for reattach`,
-				);
-			}
-		} catch (error) {
-			console.warn(
-				"[DaemonTerminalManager] Failed to reconcile sessions:",
-				error,
-			);
-		}
-	}
-
-	private async ensureDaemonSessionIdsHydrated(): Promise<void> {
-		if (this.daemonSessionIdsHydrated) return;
-
-		try {
-			const response = await this.listExistingDaemonSessions();
-			this.daemonAliveSessionIds = new Set(
-				response.sessions.filter((s) => s.isAlive).map((s) => s.sessionId),
-			);
-			this.daemonSessionIdsHydrated = true;
-		} catch (error) {
-			console.warn(
-				"[DaemonTerminalManager] Failed to list daemon sessions:",
-				error,
-			);
-		}
-	}
-
-	private setupClientEventHandlers(): void {
-		this.client.on("data", (sessionId: string, data: string) => {
-			const paneId = sessionId;
-			if (DEBUG_TERMINAL) {
-				const listenerCount = this.listenerCount(`data:${paneId}`);
-				console.log(
-					`[DaemonTerminalManager] Received data from daemon: paneId=${paneId}, bytes=${data.length}, listeners=${listenerCount}`,
-				);
-			}
-
-			const session = this.sessions.get(paneId);
-			if (session) {
-				session.lastActive = Date.now();
-			}
-
-			portManager.checkOutputForHint(data);
-			this.historyManager.writeToHistory(paneId, data, () =>
-				this.sessions.get(paneId),
-			);
-			this.emit(`data:${paneId}`, data);
-		});
-
-		this.client.on(
-			"exit",
-			(sessionId: string, exitCode: number, signal?: number) => {
-				const paneId = sessionId;
-				this.daemonAliveSessionIds.delete(paneId);
-
-				const session = this.sessions.get(paneId);
-				if (session) {
-					session.isAlive = false;
-					session.pid = null;
-				}
-
-				portManager.unregisterSession(paneId);
-				this.historyManager.closeHistoryWriter(paneId, exitCode);
-				const reason =
-					session?.exitReason ??
-					(this.isSessionKilled(paneId) ? "killed" : "exited");
-				if (session) {
-					session.exitReason = reason;
-				}
-				this.emit(`exit:${paneId}`, exitCode, signal, reason);
-				this.emit("terminalExit", { paneId, exitCode, signal, reason });
-
-				const timeoutId = setTimeout(() => {
-					this.sessions.delete(paneId);
-					this.cleanupTimeouts.delete(paneId);
-				}, SESSION_CLEANUP_DELAY_MS);
-				timeoutId.unref();
-				this.cleanupTimeouts.set(paneId, timeoutId);
-			},
-		);
-
-		this.client.on("disconnected", () => {
-			console.warn("[DaemonTerminalManager] Disconnected from daemon");
-			const activeSessionCount = Array.from(this.sessions.values()).filter(
-				(s) => s.isAlive,
-			).length;
-			track("terminal_daemon_disconnected", {
-				active_session_count: activeSessionCount,
-			});
-			this.daemonAliveSessionIds.clear();
-			this.daemonSessionIdsHydrated = false;
-			for (const [paneId, session] of this.sessions.entries()) {
-				if (session.isAlive) {
-					this.emit(
-						`disconnect:${paneId}`,
-						"Connection to terminal daemon lost",
-					);
-				}
-			}
-		});
-
-		this.client.on("error", (error: Error) => {
-			console.error("[DaemonTerminalManager] Client error:", error.message);
-			this.daemonAliveSessionIds.clear();
-			this.daemonSessionIdsHydrated = false;
-			for (const [paneId, session] of this.sessions.entries()) {
-				if (session.isAlive) {
-					this.emit(`disconnect:${paneId}`, error.message);
-				}
-			}
-		});
-
-		this.client.on(
-			"terminalError",
-			(sessionId: string, error: string, code?: string) => {
-				const paneId = sessionId;
-				console.error(
-					`[DaemonTerminalManager] Terminal error for ${paneId}: ${code ?? "UNKNOWN"}: ${error}`,
-				);
-
-				if (error.includes("Session not found")) {
-					this.daemonAliveSessionIds.delete(paneId);
-					const session = this.sessions.get(paneId);
-					if (session) {
-						session.isAlive = false;
-					}
-					console.log(
-						`[DaemonTerminalManager] Session ${paneId} lost - will trigger cold restore on next attach`,
-					);
-				}
-
-				this.emit(`error:${paneId}`, { error, code });
-			},
-		);
+		console.log("[STUB] DaemonTerminalManager.reconcileOnStartup()");
 	}
 
 	async createOrAttach(params: CreateSessionParams): Promise<SessionResult> {
-		const { paneId } = params;
-
-		if (this.isSessionKilled(paneId)) {
-			if (params.allowKilled) {
-				this.clearKilledSession(paneId);
-			} else {
-				throw new TerminalKilledError();
-			}
-		}
-
-		const requestId = params.requestId ?? `${paneId}:${Date.now()}`;
-		const joinPending = params.joinPending ?? false;
-		const pending = this.pendingSessions.get(paneId);
-		if (pending) {
-			if (
-				pending.requestId === requestId ||
-				joinPending ||
-				pending.joinPending
-			) {
-				return pending.promise;
-			}
-			pending.abortController.abort();
-			this.pendingSessions.delete(paneId);
-		}
-
-		const abortController = new AbortController();
-		const promise = this.doCreateOrAttach(
-			{ ...params, requestId },
-			abortController.signal,
-		);
-		const entry: PendingCreateOrAttach = {
-			requestId,
-			joinPending,
-			abortController,
-			promise,
-		};
-		this.pendingSessions.set(paneId, entry);
-
-		try {
-			return await entry.promise;
-		} finally {
-			if (this.pendingSessions.get(paneId) === entry) {
-				this.pendingSessions.delete(paneId);
-			}
-		}
-	}
-
-	cancelCreateOrAttach(params: { paneId: string; requestId: string }): void {
-		const pending = this.pendingSessions.get(params.paneId);
-		if (!pending || pending.requestId !== params.requestId) {
-			return;
-		}
-		pending.abortController.abort();
-		if (this.pendingSessions.get(params.paneId) === pending) {
-			this.pendingSessions.delete(params.paneId);
-		}
-	}
-
-	async listDaemonSessions(): Promise<ListSessionsResponse> {
-		const response = await this.listExistingDaemonSessions();
-		this.daemonAliveSessionIds = new Set(
-			response.sessions.filter((s) => s.isAlive).map((s) => s.sessionId),
-		);
-		this.daemonSessionIdsHydrated = true;
-		return response;
-	}
-
-	private async doCreateOrAttach(
-		params: CreateSessionParams,
-		signal: AbortSignal,
-	): Promise<SessionResult> {
-		const releaseCreateOrAttach = await this.createOrAttachLimiter.acquire(
-			this.getCreateOrAttachPriority(params),
-			signal,
-		);
-		const {
-			paneId,
-			tabId,
-			workspaceId,
-			workspaceName,
-			workspacePath,
-			rootPath,
-			cwd,
-			cols = 80,
-			rows = 24,
-			command,
-			skipColdRestore,
-			themeType,
-		} = params;
-
-		try {
-			throwIfAborted(signal);
-			if (!skipColdRestore) {
-				const stickyRestore = this.coldRestoreInfo.get(paneId);
-				if (stickyRestore) {
-					throwIfAborted(signal);
-					return {
-						isNew: false,
-						scrollback: stickyRestore.scrollback,
-						wasRecovered: true,
-						isColdRestore: true,
-						previousCwd: stickyRestore.previousCwd,
-						snapshot: {
-							snapshotAnsi: stickyRestore.scrollback,
-							rehydrateSequences: "",
-							cwd: stickyRestore.previousCwd || null,
-							modes: {},
-							cols: stickyRestore.cols,
-							rows: stickyRestore.rows,
-							scrollbackLines: 0,
-						},
-					};
-				}
-			}
-
-			if (skipColdRestore) {
-				this.coldRestoreInfo.delete(paneId);
-			}
-
-			await this.ensureDaemonSessionIdsHydrated();
-			throwIfAborted(signal);
-			const daemonHasSession = this.daemonAliveSessionIds.has(paneId);
-
-			if (!daemonHasSession && !skipColdRestore) {
-				const coldRestoreResult = await this.attemptColdRestore({
-					paneId,
-					workspaceId,
-					cols,
-					rows,
-				});
-				if (coldRestoreResult) {
-					throwIfAborted(signal);
-					return coldRestoreResult;
-				}
-			}
-
-			if (!daemonHasSession && skipColdRestore) {
-				await this.historyManager.cleanupHistory(paneId, workspaceId);
-				throwIfAborted(signal);
-			}
-
-			const shell = getDefaultShell();
-			const env = buildTerminalEnv({
-				shell,
-				paneId,
-				tabId,
-				workspaceId,
-				workspaceName,
-				workspacePath,
-				rootPath,
-				themeType,
-			});
-
-			if (DEBUG_TERMINAL) {
-				console.log("[DaemonTerminalManager] Calling daemon createOrAttach:", {
-					paneId,
-					shell,
-					cwd,
-					cols,
-					rows,
-				});
-			}
-
-			const cancelDaemonRequest = () => {
-				if (!params.requestId) return;
-				void this.client
-					.cancelCreateOrAttach({
-						sessionId: paneId,
-						requestId: params.requestId,
-					})
-					.catch((error) => {
-						console.warn(
-							`[DaemonTerminalManager] Failed to cancel createOrAttach for ${paneId}:`,
-							error,
-						);
-					});
-			};
-			signal.addEventListener("abort", cancelDaemonRequest, { once: true });
-			throwIfAborted(signal);
-			const daemonRequest = this.client.createOrAttach(
-				{
-					sessionId: paneId,
-					requestId: params.requestId,
-					paneId,
-					tabId,
-					workspaceId,
-					workspaceName,
-					workspacePath,
-					rootPath,
-					cols,
-					rows,
-					cwd,
-					env,
-					shell,
-					command,
-				},
-				signal,
-			);
-			daemonRequest.catch(() => {});
-			const response = await raceWithAbort(daemonRequest, signal).finally(
-				() => {
-					signal.removeEventListener("abort", cancelDaemonRequest);
-				},
-			);
-			throwIfAborted(signal);
-
-			this.daemonAliveSessionIds.add(paneId);
-
-			const sessionCwd = response.snapshot.cwd || cwd || "";
-			const effectiveCols = response.snapshot.cols || cols;
-			const effectiveRows = response.snapshot.rows || rows;
-
-			this.cancelPendingCleanup(paneId);
-
-			this.sessions.set(paneId, {
-				paneId,
-				workspaceId,
-				isAlive: true,
-				lastActive: Date.now(),
-				cwd: sessionCwd,
-				pid: response.pid,
-				cols: effectiveCols,
-				rows: effectiveRows,
-			});
-
-			portManager.upsertSession(paneId, workspaceId, response.pid);
-
-			const snapshotAnsi = response.snapshot.snapshotAnsi || "";
-			const snapshotAnsiBytes = Buffer.byteLength(snapshotAnsi, "utf8");
-			const initialScrollback =
-				snapshotAnsiBytes > MAX_SCROLLBACK_BYTES
-					? truncateUtf8ToLastBytes(snapshotAnsi, MAX_SCROLLBACK_BYTES)
-					: snapshotAnsi;
-
-			if (effectiveCols >= 1 && effectiveRows >= 1) {
-				this.historyManager
-					.initHistoryWriter({
-						paneId,
-						workspaceId,
-						cwd: sessionCwd,
-						cols: effectiveCols,
-						rows: effectiveRows,
-						initialScrollback,
-					})
-					.catch((error) => {
-						console.error(
-							`[DaemonTerminalManager] Failed to init history for ${paneId}:`,
-							error,
-						);
-					});
-			} else {
-				console.warn(
-					`[DaemonTerminalManager] Skipping history init for ${paneId}: invalid dimensions ${effectiveCols}x${effectiveRows}`,
-				);
-			}
-
-			return {
-				isNew: response.isNew,
-				scrollback: "",
-				wasRecovered: response.wasRecovered,
-				snapshot: {
-					snapshotAnsi: response.snapshot.snapshotAnsi,
-					rehydrateSequences: response.snapshot.rehydrateSequences,
-					cwd: response.snapshot.cwd,
-					modes: response.snapshot.modes as unknown as Record<string, boolean>,
-					cols: response.snapshot.cols,
-					rows: response.snapshot.rows,
-					scrollbackLines: response.snapshot.scrollbackLines,
-					debug: response.snapshot.debug,
-				},
-			};
-		} finally {
-			releaseCreateOrAttach();
-		}
-	}
-
-	private async attemptColdRestore({
-		paneId,
-		workspaceId,
-		cols,
-		rows,
-	}: {
-		paneId: string;
-		workspaceId: string;
-		cols: number;
-		rows: number;
-	}): Promise<SessionResult | null> {
-		const historyReader = new HistoryReader(workspaceId, paneId);
-		const metadata = await historyReader.readMetadata();
-		const wasUncleanShutdown = !!metadata && !metadata.endedAt;
-
-		if (!wasUncleanShutdown) {
-			return null;
-		}
-
-		const rawScrollback = await historyReader.readScrollback();
-		if (rawScrollback === null) {
-			await historyReader.cleanup();
-			return null;
-		}
-
-		const rawScrollbackBytes = Buffer.byteLength(rawScrollback, "utf8");
-		const scrollback =
-			rawScrollbackBytes > MAX_SCROLLBACK_BYTES
-				? truncateUtf8ToLastBytes(rawScrollback, MAX_SCROLLBACK_BYTES)
-				: rawScrollback;
-		this.coldRestoreInfo.set(paneId, {
-			scrollback,
-			previousCwd: metadata.cwd,
-			cols: metadata.cols || cols,
-			rows: metadata.rows || rows,
-		});
-
+		console.log("[STUB] DaemonTerminalManager.createOrAttach(...)");
 		return {
-			isNew: false,
-			scrollback,
-			wasRecovered: true,
-			isColdRestore: true,
-			previousCwd: metadata.cwd,
+			isNew: true,
+			scrollback: "",
+			wasRecovered: false,
 			snapshot: {
-				snapshotAnsi: scrollback,
+				snapshotAnsi: "",
 				rehydrateSequences: "",
-				cwd: metadata.cwd,
+				cwd: null,
 				modes: {},
-				cols: metadata.cols || cols,
-				rows: metadata.rows || rows,
+				cols: 80,
+				rows: 24,
 				scrollbackLines: 0,
 			},
 		};
 	}
 
-	private getCreateOrAttachPriority(params: CreateSessionParams): number {
-		try {
-			const tabsState = appState.data?.tabsState;
-			const activeTabId = tabsState?.activeTabIds?.[params.workspaceId];
-			const focusedPaneId =
-				activeTabId && tabsState?.focusedPaneIds?.[activeTabId];
+	cancelCreateOrAttach(params: { paneId: string; requestId: string }): void {
+		console.log("[STUB] DaemonTerminalManager.cancelCreateOrAttach(...)");
+	}
 
-			const isActiveFocusedPane =
-				activeTabId === params.tabId && focusedPaneId === params.paneId;
-
-			return isActiveFocusedPane ? 0 : 1;
-		} catch {
-			return 1;
-		}
+	async listDaemonSessions(): Promise<ListSessionsResponse> {
+		console.log("[STUB] DaemonTerminalManager.listDaemonSessions()");
+		return { sessions: [] };
 	}
 
 	write(params: { paneId: string; data: string }): void {
-		const { paneId, data } = params;
-
-		const session = this.sessions.get(paneId);
-		if (!session || !session.isAlive) {
-			throw new Error(`Terminal session ${paneId} not found or not alive`);
-		}
-
-		this.client.writeNoAck({ sessionId: paneId, data });
+		console.log(`[STUB] DaemonTerminalManager.write(${params.paneId}, ...)`);
 	}
 
 	ackColdRestore(paneId: string): void {
-		this.coldRestoreInfo.delete(paneId);
+		console.log(`[STUB] DaemonTerminalManager.ackColdRestore(${paneId})`);
 	}
 
 	resize(params: { paneId: string; cols: number; rows: number }): void {
-		const { paneId, cols, rows } = params;
-
-		if (
-			!Number.isInteger(cols) ||
-			!Number.isInteger(rows) ||
-			cols <= 0 ||
-			rows <= 0
-		) {
-			console.warn(
-				`[DaemonTerminalManager] Invalid resize geometry for ${paneId}: cols=${cols}, rows=${rows}`,
-			);
-			return;
-		}
-
-		this.client.resize({ sessionId: paneId, cols, rows }).catch((error) => {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			if (!errorMsg.includes("not found")) {
-				console.error(
-					`[DaemonTerminalManager] Resize failed for ${paneId}:`,
-					error,
-				);
-			}
-		});
-
-		const session = this.sessions.get(paneId);
-		if (session) {
-			session.lastActive = Date.now();
-			session.cols = cols;
-			session.rows = rows;
-		}
+		console.log(`[STUB] DaemonTerminalManager.resize(${params.paneId}, ${params.cols}, ${params.rows})`);
 	}
 
 	signal(params: { paneId: string; signal?: string }): void {
-		const { paneId, signal = "SIGINT" } = params;
-		const session = this.sessions.get(paneId);
-
-		if (!session || !session.isAlive) {
-			console.warn(
-				`Cannot signal terminal ${paneId}: session not found or not alive`,
-			);
-			return;
-		}
-
-		this.client.signal({ sessionId: paneId, signal }).catch((error) => {
-			console.warn(
-				`[DaemonTerminalManager] Failed to send signal ${signal} to ${paneId}:`,
-				error,
-			);
-		});
+		console.log(`[STUB] DaemonTerminalManager.signal(${params.paneId}, ${params.signal})`);
 	}
 
-	async kill(params: {
-		paneId: string;
-		deleteHistory?: boolean;
-	}): Promise<void> {
-		const { paneId, deleteHistory = false } = params;
-		this.daemonAliveSessionIds.delete(paneId);
-		this.recordKilledSession(paneId);
-
-		const session = this.sessions.get(paneId);
-		if (session?.isAlive) {
-			session.isAlive = false;
-			session.pid = null;
-		}
-
-		portManager.unregisterSession(paneId);
-
-		if (deleteHistory && session) {
-			await this.historyManager.cleanupHistory(paneId, session.workspaceId);
-		} else {
-			this.historyManager.closeHistoryWriter(paneId, 0);
-		}
-
-		try {
-			await this.client.kill({ sessionId: paneId, deleteHistory });
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			if (message.toLowerCase().includes("not found")) {
-				return;
-			}
-			throw error;
-		}
+	async kill(params: { paneId: string; deleteHistory?: boolean }): Promise<void> {
+		console.log(`[STUB] DaemonTerminalManager.kill(${params.paneId}, ${params.deleteHistory})`);
 	}
 
 	detach(params: { paneId: string }): void {
-		const { paneId } = params;
-
-		const session = this.sessions.get(paneId);
-
-		this.client.detach({ sessionId: paneId }).catch((error) => {
-			console.error(
-				`[DaemonTerminalManager] Detach failed for ${paneId}:`,
-				error,
-			);
-		});
-
-		if (session) {
-			session.lastActive = Date.now();
-		}
+		console.log(`[STUB] DaemonTerminalManager.detach(${params.paneId})`);
 	}
 
 	async clearScrollback(params: { paneId: string }): Promise<void> {
-		const { paneId } = params;
-
-		await this.client.clearScrollback({ sessionId: paneId });
-
-		const session = this.sessions.get(paneId);
-		if (session) {
-			session.lastActive = Date.now();
-
-			const writer = this.historyManager.getHistoryWriter(paneId);
-			if (writer) {
-				await writer.close().catch((error) => {
-					console.warn(
-						`[DaemonTerminalManager] Failed to close history writer for ${paneId}:`,
-						error,
-					);
-				});
-				try {
-					await this.historyManager.initHistoryWriter({
-						paneId,
-						workspaceId: session.workspaceId,
-						cwd: session.cwd,
-						cols: session.cols,
-						rows: session.rows,
-						initialScrollback: undefined,
-					});
-				} catch (error) {
-					console.warn(
-						`[DaemonTerminalManager] Failed to reinitialize history writer for ${paneId}:`,
-						error,
-					);
-				}
-			}
-		}
+		console.log(`[STUB] DaemonTerminalManager.clearScrollback(${params.paneId})`);
 	}
 
 	async resetHistoryPersistence(): Promise<void> {
-		await this.historyManager.resetAll(this.sessions);
+		console.log("[STUB] DaemonTerminalManager.resetHistoryPersistence()");
 	}
 
-	getSession(
-		paneId: string,
-	): { isAlive: boolean; cwd: string; lastActive: number } | null {
-		const session = this.sessions.get(paneId);
-		if (!session) {
-			return null;
-		}
-
-		return {
-			isAlive: session.isAlive,
-			cwd: session.cwd,
-			lastActive: session.lastActive,
-		};
+	getSession(paneId: string): { isAlive: boolean; cwd: string; lastActive: number } | null {
+		console.log(`[STUB] DaemonTerminalManager.getSession(${paneId})`);
+		return null;
 	}
 
-	async killByWorkspaceId(
-		workspaceId: string,
-	): Promise<{ killed: number; failed: number }> {
-		const paneIdsToKill = new Set<string>();
-
-		try {
-			const response = await this.listExistingDaemonSessions();
-			for (const session of response.sessions) {
-				if (session.workspaceId === workspaceId && session.isAlive) {
-					paneIdsToKill.add(session.paneId);
-				}
-			}
-		} catch (error) {
-			console.warn(
-				"[DaemonTerminalManager] Failed to query daemon for sessions:",
-				error,
-			);
-			for (const [paneId, session] of this.sessions.entries()) {
-				if (session.workspaceId === workspaceId) {
-					paneIdsToKill.add(paneId);
-				}
-			}
-		}
-
-		if (paneIdsToKill.size === 0) {
-			return { killed: 0, failed: 0 };
-		}
-
-		console.log(
-			`[DaemonTerminalManager] Killing ${paneIdsToKill.size} sessions for workspace ${workspaceId}`,
-		);
-
-		const results = await Promise.allSettled(
-			Array.from(paneIdsToKill).map(async (paneId) => {
-				this.recordKilledSession(paneId);
-
-				const session = this.sessions.get(paneId);
-				if (session?.isAlive) {
-					session.isAlive = false;
-					session.pid = null;
-				}
-
-				portManager.unregisterSession(paneId);
-				await this.historyManager.cleanupHistory(paneId, workspaceId);
-				await this.client.kill({ sessionId: paneId, deleteHistory: true });
-			}),
-		);
-
-		const killed = results.filter((r) => r.status === "fulfilled").length;
-		const failed = results.filter((r) => r.status === "rejected").length;
-
-		if (failed > 0) {
-			console.warn(
-				`[DaemonTerminalManager] killByWorkspaceId: killed=${killed}, failed=${failed}`,
-			);
-		}
-
-		return { killed, failed };
+	async killByWorkspaceId(workspaceId: string): Promise<{ killed: number; failed: number }> {
+		console.log(`[STUB] DaemonTerminalManager.killByWorkspaceId(${workspaceId})`);
+		return { killed: 0, failed: 0 };
 	}
 
 	async getSessionCountByWorkspaceId(workspaceId: string): Promise<number> {
-		try {
-			const response = await this.listExistingDaemonSessions();
-			return response.sessions.filter(
-				(s) => s.workspaceId === workspaceId && s.isAlive,
-			).length;
-		} catch (error) {
-			console.warn(
-				"[DaemonTerminalManager] Failed to query daemon for session count:",
-				error,
-			);
-			return Array.from(this.sessions.values()).filter(
-				(session) => session.workspaceId === workspaceId && session.isAlive,
-			).length;
-		}
+		console.log(`[STUB] DaemonTerminalManager.getSessionCountByWorkspaceId(${workspaceId})`);
+		return 0;
 	}
 
 	refreshPromptsForWorkspace(workspaceId: string): void {
-		for (const [paneId, session] of this.sessions.entries()) {
-			if (session.workspaceId === workspaceId && session.isAlive) {
-				this.client.writeNoAck({ sessionId: paneId, data: "\n" });
-			}
-		}
+		console.log(`[STUB] DaemonTerminalManager.refreshPromptsForWorkspace(${workspaceId})`);
 	}
 
 	detachAllListeners(): void {
-		for (const event of this.eventNames()) {
-			const name = String(event);
-			if (
-				name.startsWith("data:") ||
-				name.startsWith("exit:") ||
-				name.startsWith("disconnect:") ||
-				name.startsWith("error:") ||
-				name === "terminalExit"
-			) {
-				this.removeAllListeners(event);
-			}
-		}
-	}
-
-	private cancelPendingCleanup(paneId: string): void {
-		const timeout = this.cleanupTimeouts.get(paneId);
-		if (timeout) {
-			clearTimeout(timeout);
-			this.cleanupTimeouts.delete(paneId);
-		}
-	}
-
-	private abortPendingSessions(): void {
-		for (const pending of this.pendingSessions.values()) {
-			pending.abortController.abort();
-		}
-		this.pendingSessions.clear();
+		console.log("[STUB] DaemonTerminalManager.detachAllListeners()");
 	}
 
 	async cleanup(): Promise<void> {
-		this.abortPendingSessions();
-		for (const timeout of this.cleanupTimeouts.values()) {
-			clearTimeout(timeout);
-		}
-		this.cleanupTimeouts.clear();
-
-		await this.historyManager.cleanup();
-
-		this.sessions.clear();
-		this.daemonAliveSessionIds.clear();
-		this.daemonSessionIdsHydrated = false;
-		this.coldRestoreInfo.clear();
-		this.killedSessionTombstones.clear();
-		this.removeAllListeners();
-		disposeTerminalHostClient();
+		console.log("[STUB] DaemonTerminalManager.cleanup()");
 	}
 
 	async forceKillAll(): Promise<void> {
-		const response = await this.listExistingDaemonSessions();
-		const sessionIds = response.sessions.map((s) => s.sessionId);
-
-		for (const session of response.sessions) {
-			if (!session.isAlive) continue;
-			this.recordKilledSession(session.sessionId);
-
-			const localSession = this.sessions.get(session.sessionId);
-			if (localSession?.isAlive) {
-				localSession.isAlive = false;
-				localSession.pid = null;
-			}
-		}
-
-		for (const timeout of this.cleanupTimeouts.values()) {
-			clearTimeout(timeout);
-		}
-		this.cleanupTimeouts.clear();
-
-		await this.historyManager.forceCloseAll();
-
-		// Skip the daemon RPC when the probe proves there are no live sessions to kill.
-		// Revisit this if killAll ever grows daemon-side cleanup responsibilities.
-		if (sessionIds.length > 0) {
-			await this.client.killAll({});
-		}
-		for (const paneId of sessionIds) {
-			portManager.unregisterSession(paneId);
-		}
-		this.daemonAliveSessionIds.clear();
-		this.daemonSessionIdsHydrated = true;
-		this.coldRestoreInfo.clear();
-		this.sessions.clear();
+		console.log("[STUB] DaemonTerminalManager.forceKillAll()");
 	}
 
 	reset(): void {
-		console.log("[DaemonTerminalManager] Resetting...");
-
-		this.abortPendingSessions();
-		for (const timeout of this.cleanupTimeouts.values()) {
-			clearTimeout(timeout);
-		}
-		this.cleanupTimeouts.clear();
-		this.client.removeAllListeners();
-
-		this.sessions.clear();
-		this.daemonAliveSessionIds.clear();
-		this.daemonSessionIdsHydrated = false;
-		this.coldRestoreInfo.clear();
-		this.killedSessionTombstones.clear();
-
-		this.historyManager.closeAllSync();
-		this.createOrAttachLimiter.reset();
-
-		disposeTerminalHostClient();
-		this.initializeClient();
-
-		console.log("[DaemonTerminalManager] Reset complete");
+		console.log("[STUB] DaemonTerminalManager.reset()");
 	}
+
+	private recordKilledSession(paneId: string): void {}
+	private isSessionKilled(paneId: string): boolean { return false; }
+	private clearKilledSession(paneId: string): void {}
+	private initializeClient(): void {}
+	private async listExistingDaemonSessions(): Promise<ListSessionsResponse> { return { sessions: [] }; }
+	private async ensureDaemonSessionIdsHydrated(): Promise<void> {}
+	private setupClientEventHandlers(): void {}
+	private async doCreateOrAttach(params: CreateSessionParams, signal: AbortSignal): Promise<SessionResult> {
+		return {
+			isNew: true,
+			scrollback: "",
+			wasRecovered: false,
+			snapshot: {
+				snapshotAnsi: "",
+				rehydrateSequences: "",
+				cwd: null,
+				modes: {},
+				cols: 80,
+				rows: 24,
+				scrollbackLines: 0,
+			},
+		};
+	}
+	private async attemptColdRestore(params: { paneId: string; workspaceId: string; cols: number; rows: number }): Promise<SessionResult | null> { return null; }
+	private getCreateOrAttachPriority(params: CreateSessionParams): number { return 1; }
+	private cancelPendingCleanup(paneId: string): void {}
+	private abortPendingSessions(): void {}
 }

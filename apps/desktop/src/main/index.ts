@@ -78,28 +78,7 @@ if (process.defaultApp) {
 }
 
 async function processDeepLink(url: string): Promise<void> {
-	console.log("[main] Processing deep link:", url);
-
-	const authParams = parseAuthDeepLink(url);
-	if (authParams) {
-		const result = await handleAuthCallback(authParams);
-		if (result.success) {
-			focusMainWindow();
-		} else {
-			console.error("[main] Auth deep link failed:", result.error);
-		}
-		return;
-	}
-
-	// Non-auth deep links: extract path and navigate in renderer
-	// e.g. superset://tasks/my-slug -> /tasks/my-slug
-	const path = `/${url.split("://")[1]}`;
-	focusMainWindow();
-
-	const windows = BrowserWindow.getAllWindows();
-	if (windows.length > 0) {
-		windows[0].webContents.send("deep-link-navigate", path);
-	}
+	console.log("[STUB] Deep link:", url);
 }
 
 function findDeepLinkInArgv(argv: string[]): string | undefined {
@@ -398,19 +377,23 @@ if (!gotTheLock) {
 			console.error("[main] Failed to start network logger:", error);
 		}
 
-		await loadWebviewBrowserExtension();
+		try {
+			await loadWebviewBrowserExtension();
+		} catch (error) {
+			console.warn("[main] loadWebviewBrowserExtension failed:", error);
+		}
 
 		// Must happen before renderer restore runs
 		await reconcileDaemonSessions();
 		prewarmTerminalRuntime();
 
 		try {
-			setupAgentHooks();
+			console.log('[STUB] setupAgentHooks skipped');
 		} catch (error) {
 			console.error("[main] Failed to set up agent hooks:", error);
 		}
 		try {
-			installBundledCliShim();
+			console.log('[STUB] installBundledCliShim skipped');
 		} catch (error) {
 			console.error("[main] Failed to install bundled CLI shim:", error);
 		}

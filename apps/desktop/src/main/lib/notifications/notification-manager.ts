@@ -1,11 +1,13 @@
+/**
+ * Notification Manager - STUB IMPLEMENTATION
+ *
+ * This is a stub that does nothing for all operations.
+ */
+
 import type {
 	AgentLifecycleEvent,
 	NotificationIds,
 } from "shared/notification-types";
-import { isPaneVisible } from "./utils";
-
-const NOTIFICATION_TTL_MS = 10 * 60 * 1000;
-const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface NativeNotification {
 	show(): void;
@@ -47,110 +49,22 @@ export class NotificationManager {
 	private counter = 0;
 	private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
-	constructor(private deps: NotificationManagerDeps) {}
+	constructor(private _deps: NotificationManagerDeps) {}
 
 	start(): void {
-		if (this.sweepTimer) return;
-		this.sweepTimer = setInterval(() => this.sweep(), SWEEP_INTERVAL_MS);
+		console.log("[STUB] NotificationManager.start");
 	}
 
-	handleAgentLifecycle(event: AgentLifecycleEvent): void {
-		if (event.eventType === "Start") return;
-		if (!this.deps.isSupported()) return;
-
-		if (this.shouldSuppressForVisiblePane(event)) return;
-
-		const workspaceName = this.deps.getWorkspaceName(event.workspaceId);
-		const title = this.deps.getNotificationTitle(event);
-
-		const isPermissionRequest = event.eventType === "PermissionRequest";
-		const isPendingQuestion = event.eventType === "PendingQuestion";
-		const notification = this.deps.createNotification({
-			title:
-				isPermissionRequest || isPendingQuestion
-					? `Awaiting Response — ${workspaceName}`
-					: `Agent Complete — ${workspaceName}`,
-			body:
-				isPermissionRequest || isPendingQuestion
-					? `"${title}" is waiting for your reply`
-					: `"${title}" has finished its task`,
-			silent: true,
-		});
-
-		const key = event.sessionId ?? event.paneId ?? `_anon_${this.counter++}`;
-		this.track(key, notification);
-
-		this.deps.playSound();
-
-		notification.on("click", () => {
-			this.deps.onNotificationClick({
-				paneId: event.paneId,
-				tabId: event.tabId,
-				workspaceId: event.workspaceId,
-				sessionId: event.sessionId,
-				...(event.terminalId ? { terminalId: event.terminalId } : {}),
-			});
-			this.untrack(key, notification);
-		});
-
-		notification.on("close", () => {
-			this.untrack(key, notification);
-		});
-
-		notification.show();
+	handleAgentLifecycle(_event: AgentLifecycleEvent): void {
+		console.log("[STUB] NotificationManager.handleAgentLifecycle");
 	}
 
-	/** Number of tracked notifications (for testing). */
 	get activeCount(): number {
-		return this.active.size;
+		console.log("[STUB] NotificationManager.activeCount");
+		return 0;
 	}
 
 	dispose(): void {
-		if (this.sweepTimer) {
-			clearInterval(this.sweepTimer);
-			this.sweepTimer = null;
-		}
-		this.active.clear();
-	}
-
-	private shouldSuppressForVisiblePane(event: AgentLifecycleEvent): boolean {
-		if (!event.workspaceId || !event.tabId || !event.paneId) return false;
-
-		const ctx = this.deps.getVisibilityContext();
-		if (!ctx.isFocused) return false;
-
-		return isPaneVisible({
-			currentWorkspaceId: ctx.currentWorkspaceId,
-			tabsState: ctx.tabsState,
-			pane: {
-				workspaceId: event.workspaceId,
-				tabId: event.tabId,
-				paneId: event.paneId,
-			},
-		});
-	}
-
-	private track(key: string, notification: NativeNotification): void {
-		const prev = this.active.get(key);
-		if (prev) {
-			prev.notification.close();
-		}
-		this.active.set(key, { notification, createdAt: Date.now() });
-	}
-
-	private untrack(key: string, notification?: NativeNotification): void {
-		const current = this.active.get(key);
-		if (!current) return;
-		if (notification && current.notification !== notification) return;
-		this.active.delete(key);
-	}
-
-	private sweep(): void {
-		const now = Date.now();
-		for (const [key, entry] of this.active) {
-			if (now - entry.createdAt > NOTIFICATION_TTL_MS) {
-				this.active.delete(key);
-			}
-		}
+		console.log("[STUB] NotificationManager.dispose");
 	}
 }

@@ -1,37 +1,42 @@
 import { publicProcedure, router } from "..";
-import {
-	getPermissionStatus,
-	requestAccessibility,
-	requestAppleEvents,
-	requestFullDiskAccess,
-	requestLocalNetwork,
-	requestMicrophone,
-} from "./permissions/native-permissions";
+import { stubLog } from "../../stub-data";
 
 export const createPermissionsRouter = () => {
 	return router({
 		getStatus: publicProcedure.query(() => {
-			return getPermissionStatus();
+			stubLog("permissions", "getStatus");
+			return {
+				fullDiskAccess: "granted" as const,
+				accessibility: "granted" as const,
+				microphone: "granted" as const,
+				appleEvents: "granted" as const,
+				localNetwork: "granted" as const,
+			};
 		}),
 
 		requestFullDiskAccess: publicProcedure.mutation(async () => {
-			await requestFullDiskAccess();
+			stubLog("permissions", "requestFullDiskAccess");
+			return "granted";
 		}),
 
 		requestAccessibility: publicProcedure.mutation(async () => {
-			await requestAccessibility();
+			stubLog("permissions", "requestAccessibility");
+			return "granted";
 		}),
 
 		requestMicrophone: publicProcedure.mutation(async () => {
-			return requestMicrophone();
+			stubLog("permissions", "requestMicrophone");
+			return "granted";
 		}),
 
 		requestAppleEvents: publicProcedure.mutation(async () => {
-			await requestAppleEvents();
+			stubLog("permissions", "requestAppleEvents");
+			return "granted";
 		}),
 
 		requestLocalNetwork: publicProcedure.mutation(async () => {
-			await requestLocalNetwork();
+			stubLog("permissions", "requestLocalNetwork");
+			return "granted";
 		}),
 	});
 };

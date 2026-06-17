@@ -1,36 +1,19 @@
-import { browserHistory } from "@superset/local-db";
-import { like, or, sql } from "drizzle-orm";
-import { localDb } from "main/lib/local-db";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import { stubLog } from "../../stub-data";
 
 export const createBrowserHistoryRouter = () => {
 	return router({
 		getAll: publicProcedure.query(() => {
-			return localDb
-				.select()
-				.from(browserHistory)
-				.orderBy(sql`${browserHistory.lastVisitedAt} desc`)
-				.limit(500)
-				.all();
+			stubLog("browserHistory", "getAll");
+			return [];
 		}),
 
 		search: publicProcedure
 			.input(z.object({ query: z.string() }))
 			.query(({ input }) => {
-				const pattern = `%${input.query}%`;
-				return localDb
-					.select()
-					.from(browserHistory)
-					.where(
-						or(
-							like(browserHistory.url, pattern),
-							like(browserHistory.title, pattern),
-						),
-					)
-					.orderBy(sql`${browserHistory.lastVisitedAt} desc`)
-					.limit(10)
-					.all();
+				stubLog("browserHistory", "search", input);
+				return [];
 			}),
 
 		upsert: publicProcedure
@@ -42,29 +25,13 @@ export const createBrowserHistoryRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				localDb
-					.insert(browserHistory)
-					.values({
-						url: input.url,
-						title: input.title,
-						faviconUrl: input.faviconUrl ?? null,
-						lastVisitedAt: Date.now(),
-						visitCount: 1,
-					})
-					.onConflictDoUpdate({
-						target: browserHistory.url,
-						set: {
-							title: input.title,
-							faviconUrl: input.faviconUrl ?? null,
-							lastVisitedAt: Date.now(),
-							visitCount: sql`${browserHistory.visitCount} + 1`,
-						},
-					})
-					.run();
+				stubLog("browserHistory", "upsert", input);
+				return { success: true };
 			}),
 
 		clear: publicProcedure.mutation(() => {
-			localDb.delete(browserHistory).run();
+			stubLog("browserHistory", "clear");
+			return { success: true };
 		}),
 	});
 };

@@ -1,16 +1,7 @@
-import { toErrorMessage } from "@superset/workspace-fs/host";
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { getServiceForWorkspace } from "../workspace-fs-service";
-
-function isClosedStreamError(error: unknown): boolean {
-	return (
-		error instanceof TypeError &&
-		"code" in error &&
-		error.code === "ERR_INVALID_STATE"
-	);
-}
+import { stubLog } from "../../stub-data";
 
 const writeFileContentSchema = z.union([
 	z.string(),
@@ -38,10 +29,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.listDirectory({
-					absolutePath: input.absolutePath,
-				});
+				stubLog("filesystem", "listDirectory", input);
+				return [];
 			}),
 
 		readFile: publicProcedure
@@ -55,22 +44,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				const result = await service.readFile({
-					absolutePath: input.absolutePath,
-					offset: input.offset,
-					maxBytes: input.maxBytes,
-					encoding: input.encoding,
-				});
-
-				if (result.kind === "bytes") {
-					return {
-						...result,
-						content: Buffer.from(result.content).toString("base64"),
-					};
-				}
-
-				return result;
+				stubLog("filesystem", "readFile", input);
+				return { kind: "text" as const, content: "" };
 			}),
 
 		getMetadata: publicProcedure
@@ -81,10 +56,15 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.getMetadata({
-					absolutePath: input.absolutePath,
-				});
+				stubLog("filesystem", "getMetadata", input);
+				return {
+					isDirectory: false,
+					isFile: true,
+					size: 0,
+					createdAt: "",
+					modifiedAt: "",
+					accessedAt: "",
+				};
 			}),
 
 		writeFile: publicProcedure
@@ -108,19 +88,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				const content =
-					typeof input.content === "string"
-						? input.content
-						: new Uint8Array(Buffer.from(input.content.data, "base64"));
-
-				return await service.writeFile({
-					absolutePath: input.absolutePath,
-					content,
-					encoding: input.encoding,
-					options: input.options,
-					precondition: input.precondition,
-				});
+				stubLog("filesystem", "writeFile", input);
+				return { success: true };
 			}),
 
 		createDirectory: publicProcedure
@@ -132,11 +101,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.createDirectory({
-					absolutePath: input.absolutePath,
-					recursive: input.recursive,
-				});
+				stubLog("filesystem", "createDirectory", input);
+				return { success: true };
 			}),
 
 		deletePath: publicProcedure
@@ -148,11 +114,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.deletePath({
-					absolutePath: input.absolutePath,
-					permanent: input.permanent,
-				});
+				stubLog("filesystem", "deletePath", input);
+				return { success: true };
 			}),
 
 		movePath: publicProcedure
@@ -164,11 +127,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.movePath({
-					sourceAbsolutePath: input.sourceAbsolutePath,
-					destinationAbsolutePath: input.destinationAbsolutePath,
-				});
+				stubLog("filesystem", "movePath", input);
+				return { success: true };
 			}),
 
 		copyPath: publicProcedure
@@ -180,11 +140,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.copyPath({
-					sourceAbsolutePath: input.sourceAbsolutePath,
-					destinationAbsolutePath: input.destinationAbsolutePath,
-				});
+				stubLog("filesystem", "copyPath", input);
+				return { success: true };
 			}),
 
 		searchFiles: publicProcedure
@@ -199,19 +156,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				const trimmedQuery = input.query.trim();
-				if (!trimmedQuery) {
-					return { matches: [] };
-				}
-
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.searchFiles({
-					query: trimmedQuery,
-					includeHidden: input.includeHidden,
-					includePattern: input.includePattern,
-					excludePattern: input.excludePattern,
-					limit: input.limit,
-				});
+				stubLog("filesystem", "searchFiles", input);
+				return { matches: [] };
 			}),
 
 		searchContent: publicProcedure
@@ -226,19 +172,8 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.query(async ({ input }) => {
-				const trimmedQuery = input.query.trim();
-				if (!trimmedQuery) {
-					return { matches: [] };
-				}
-
-				const service = getServiceForWorkspace(input.workspaceId);
-				return await service.searchContent({
-					query: trimmedQuery,
-					includeHidden: input.includeHidden,
-					includePattern: input.includePattern,
-					excludePattern: input.excludePattern,
-					limit: input.limit,
-				});
+				stubLog("filesystem", "searchContent", input);
+				return { matches: [] };
 			}),
 
 		watchPath: publicProcedure
@@ -250,75 +185,9 @@ export const createFilesystemRouter = () => {
 				}),
 			)
 			.subscription(({ input }) => {
-				return observable<WatchPathEventBatch>((emit) => {
-					const service = getServiceForWorkspace(input.workspaceId);
-					let isDisposed = false;
-					const stream = service.watchPath({
-						absolutePath: input.absolutePath,
-						recursive: input.recursive,
-					});
-					const iterator = stream[Symbol.asyncIterator]();
-
-					const runCleanup = () => {
-						isDisposed = true;
-						void iterator.return?.().catch((error) => {
-							console.error("[filesystem/watchPath] Cleanup failed:", {
-								workspaceId: input.workspaceId,
-								error,
-							});
-						});
-					};
-
-					const emitIfOpen = (value: WatchPathEventBatch): boolean => {
-						try {
-							emit.next(value);
-							return true;
-						} catch (error) {
-							if (isClosedStreamError(error)) {
-								runCleanup();
-								return false;
-							}
-
-							throw error;
-						}
-					};
-
-					void (async () => {
-						try {
-							while (!isDisposed) {
-								const next = await iterator.next();
-								if (next.done || isDisposed) {
-									return;
-								}
-
-								if (!emitIfOpen(next.value)) {
-									return;
-								}
-							}
-						} catch (error) {
-							console.error("[filesystem/watchPath] Failed:", {
-								workspaceId: input.workspaceId,
-								error: toErrorMessage(error),
-							});
-
-							if (
-								emitIfOpen({
-									events: [
-										{
-											kind: "overflow",
-											absolutePath: input.absolutePath,
-										},
-									],
-								})
-							) {
-								runCleanup();
-							}
-						}
-					})();
-
-					return () => {
-						runCleanup();
-					};
+				stubLog("filesystem", "watchPath", input);
+				return observable<WatchPathEventBatch>(() => {
+					return () => {};
 				});
 			}),
 	});

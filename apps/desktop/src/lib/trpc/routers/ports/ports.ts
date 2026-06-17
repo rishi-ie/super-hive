@@ -1,11 +1,8 @@
 import { observable } from "@trpc/server/observable";
-import { portManager } from "main/lib/terminal/port-manager";
-import type { DetectedPort, EnrichedPort } from "shared/types";
+import type { DetectedPort } from "shared/types";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { getLabelsForWorkspace } from "./label-cache";
-
-export { invalidatePortLabelCache } from "./label-cache";
+import { stubLog } from "../../stub-data";
 
 type PortEvent =
 	| { type: "add"; port: DetectedPort }
@@ -13,35 +10,15 @@ type PortEvent =
 
 export const createPortsRouter = () => {
 	return router({
-		getAll: publicProcedure.query((): EnrichedPort[] => {
-			const detectedPorts = portManager.getAllPorts();
-			return detectedPorts.map((port) => {
-				const labels = getLabelsForWorkspace(port.workspaceId);
-				return {
-					...port,
-					label: labels?.get(port.port) ?? null,
-					hostUrl: null,
-				};
-			});
+		getAll: publicProcedure.query(() => {
+			stubLog("ports", "getAll");
+			return [];
 		}),
 
 		subscribe: publicProcedure.subscription(() => {
+			stubLog("ports", "subscribe");
 			return observable<PortEvent>((emit) => {
-				const onAdd = (port: DetectedPort) => {
-					emit.next({ type: "add", port });
-				};
-
-				const onRemove = (port: DetectedPort) => {
-					emit.next({ type: "remove", port });
-				};
-
-				portManager.on("port:add", onAdd);
-				portManager.on("port:remove", onRemove);
-
-				return () => {
-					portManager.off("port:add", onAdd);
-					portManager.off("port:remove", onRemove);
-				};
+				return () => {};
 			});
 		}),
 
@@ -53,10 +30,9 @@ export const createPortsRouter = () => {
 					port: z.number().int().positive(),
 				}),
 			)
-			.mutation(
-				async ({ input }): Promise<{ success: boolean; error?: string }> => {
-					return portManager.killPort(input);
-				},
-			),
+			.mutation(({ input }) => {
+				stubLog("ports", "kill", input);
+				return { success: true };
+			}),
 	});
 };

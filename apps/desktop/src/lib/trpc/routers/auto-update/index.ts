@@ -1,66 +1,54 @@
 import { observable } from "@trpc/server/observable";
-import {
-	type AutoUpdateStatusEvent,
-	autoUpdateEmitter,
-	checkForUpdates,
-	checkForUpdatesInteractive,
-	dismissUpdate,
-	getUpdateStatus,
-	installUpdate,
-	simulateDownloading,
-	simulateError,
-	simulateUpdateReady,
-} from "main/lib/auto-updater";
 import { publicProcedure, router } from "../..";
+import { stubLog } from "../../stub-data";
 
 export const createAutoUpdateRouter = () => {
 	return router({
 		subscribe: publicProcedure.subscription(() => {
-			return observable<AutoUpdateStatusEvent>((emit) => {
-				emit.next(getUpdateStatus());
-
-				const onStatusChanged = (event: AutoUpdateStatusEvent) => {
-					emit.next(event);
-				};
-
-				autoUpdateEmitter.on("status-changed", onStatusChanged);
-
-				return () => {
-					autoUpdateEmitter.off("status-changed", onStatusChanged);
-				};
+			stubLog("auto-update", "subscribe");
+			return observable((emit) => {
+				return () => {};
 			});
 		}),
 
 		getStatus: publicProcedure.query(() => {
-			return getUpdateStatus();
+			stubLog("auto-update", "getStatus");
+			return { status: "idle" as const, version: "0.0.0", progress: 0 };
 		}),
 
 		check: publicProcedure.mutation(() => {
-			checkForUpdates();
+			stubLog("auto-update", "check");
+			return { success: true };
 		}),
 
 		checkInteractive: publicProcedure.mutation(() => {
-			checkForUpdatesInteractive();
+			stubLog("auto-update", "checkInteractive");
+			return { success: true };
 		}),
 
 		install: publicProcedure.mutation(() => {
-			installUpdate();
+			stubLog("auto-update", "install");
+			return { success: true };
 		}),
 
 		dismiss: publicProcedure.mutation(() => {
-			dismissUpdate();
+			stubLog("auto-update", "dismiss");
+			return { success: true };
 		}),
 
 		simulateReady: publicProcedure.mutation(() => {
-			simulateUpdateReady();
+			stubLog("auto-update", "simulateReady");
+			return { success: true };
 		}),
 
 		simulateDownloading: publicProcedure.mutation(() => {
-			simulateDownloading();
+			stubLog("auto-update", "simulateDownloading");
+			return { success: true };
 		}),
 
 		simulateError: publicProcedure.mutation(() => {
-			simulateError();
+			stubLog("auto-update", "simulateError");
+			return { success: true };
 		}),
 	});
 };

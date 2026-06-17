@@ -1,11 +1,7 @@
 import { observable } from "@trpc/server/observable";
-import {
-	menuEmitter,
-	type OpenSettingsEvent,
-	type OpenWorkspaceEvent,
-	type SettingsSection,
-} from "main/lib/menu-events";
+import type { OpenSettingsEvent, OpenWorkspaceEvent } from "main/lib/menu-events";
 import { publicProcedure, router } from "..";
+import { stubLog } from "../../stub-data";
 
 type MenuEvent =
 	| { type: "open-settings"; data: OpenSettingsEvent }
@@ -15,28 +11,9 @@ type MenuEvent =
 export const createMenuRouter = () => {
 	return router({
 		subscribe: publicProcedure.subscription(() => {
-			return observable<MenuEvent>((emit) => {
-				const onOpenSettings = (section?: SettingsSection) => {
-					emit.next({ type: "open-settings", data: { section } });
-				};
-
-				const onOpenWorkspace = (workspaceId: string) => {
-					emit.next({ type: "open-workspace", data: { workspaceId } });
-				};
-
-				const onOpenProject = () => {
-					emit.next({ type: "open-project" });
-				};
-
-				menuEmitter.on("open-settings", onOpenSettings);
-				menuEmitter.on("open-workspace", onOpenWorkspace);
-				menuEmitter.on("open-project", onOpenProject);
-
-				return () => {
-					menuEmitter.off("open-settings", onOpenSettings);
-					menuEmitter.off("open-workspace", onOpenWorkspace);
-					menuEmitter.off("open-project", onOpenProject);
-				};
+			stubLog("menu", "subscribe");
+			return observable<MenuEvent>(() => {
+				return () => {};
 			});
 		}),
 	});

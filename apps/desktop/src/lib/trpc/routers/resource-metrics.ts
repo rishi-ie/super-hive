@@ -1,10 +1,10 @@
-import { collectResourceMetrics } from "main/lib/resource-metrics";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
 import {
 	resourceMetricsSnapshotSchema,
 	validateResourceMetricsSnapshot,
 } from "./resource-metrics.schema";
+import { stubLog } from "../../stub-data";
 
 const getSnapshotInputSchema = z
 	.object({
@@ -20,21 +20,30 @@ export const createResourceMetricsRouter = () => {
 		getSnapshot: publicProcedure
 			.input(getSnapshotInputSchema)
 			.output(resourceMetricsSnapshotSchema)
-			.query(async ({ input }) => {
-				const snapshot = await collectResourceMetrics({
-					mode: input?.mode,
-					force: input?.force,
-					surface: input?.surface,
-					organizationId: input?.organizationId,
+			.query(({ input }) => {
+				stubLog("resource-metrics", "getSnapshot", input);
+				const fallback = validateResourceMetricsSnapshot({
+					app: {
+						cpu: 0,
+						memory: 0,
+						main: { cpu: 0, memory: 0 },
+						renderer: { cpu: 0, memory: 0 },
+						other: { cpu: 0, memory: 0 },
+					},
+					workspaces: [],
+					host: {
+						totalMemory: 0,
+						freeMemory: 0,
+						usedMemory: 0,
+						memoryUsagePercent: 0,
+						cpuCoreCount: 1,
+						loadAverage1m: 0,
+					},
+					totalCpu: 0,
+					totalMemory: 0,
+					collectedAt: Date.now(),
 				});
-				const validation = validateResourceMetricsSnapshot(snapshot);
-				if (!validation.isValid) {
-					console.warn(
-						"[resource-metrics] Invalid snapshot payload; returning fallback snapshot",
-						validation.issues,
-					);
-				}
-				return validation.snapshot;
+				return fallback.snapshot;
 			}),
 	});
 };

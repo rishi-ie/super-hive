@@ -1,50 +1,37 @@
-import fs from "node:fs/promises";
-import { homedir } from "node:os";
-import type { BrowserWindow } from "electron";
-import { dialog } from "electron";
-import { getImageMimeType } from "shared/file-types";
 import { z } from "zod";
 import { publicProcedure, router } from "..";
+import { stubLog } from "../../stub-data";
 
-export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
+export const createWindowRouter = () => {
 	return router({
 		minimize: publicProcedure.mutation(() => {
-			const window = getWindow();
-			if (!window) return { success: false };
-			window.minimize();
+			stubLog("window", "minimize");
 			return { success: true };
 		}),
 
 		maximize: publicProcedure.mutation(() => {
-			const window = getWindow();
-			if (!window) return { success: false, isMaximized: false };
-			if (window.isMaximized()) {
-				window.unmaximize();
-			} else {
-				window.maximize();
-			}
-			return { success: true, isMaximized: window.isMaximized() };
+			stubLog("window", "maximize");
+			return { success: true };
 		}),
 
 		close: publicProcedure.mutation(() => {
-			const window = getWindow();
-			if (!window) return { success: false };
-			window.close();
+			stubLog("window", "close");
 			return { success: true };
 		}),
 
 		isMaximized: publicProcedure.query(() => {
-			const window = getWindow();
-			if (!window) return false;
-			return window.isMaximized();
+			stubLog("window", "isMaximized");
+			return false;
 		}),
 
 		getPlatform: publicProcedure.query(() => {
-			return process.platform;
+			stubLog("window", "getPlatform");
+			return "darwin";
 		}),
 
 		getHomeDir: publicProcedure.query(() => {
-			return homedir();
+			stubLog("window", "getHomeDir");
+			return "/mock/home";
 		}),
 
 		getDirectoryStatus: publicProcedure
@@ -53,19 +40,9 @@ export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
 					path: z.string(),
 				}),
 			)
-			.query(async ({ input }) => {
-				try {
-					const stats = await fs.stat(input.path);
-					return {
-						exists: true,
-						isDirectory: stats.isDirectory(),
-					};
-				} catch {
-					return {
-						exists: false,
-						isDirectory: false,
-					};
-				}
+			.query(({ input }) => {
+				stubLog("window", "getDirectoryStatus", input);
+				return { exists: true };
 			}),
 
 		selectDirectory: publicProcedure
@@ -77,53 +54,14 @@ export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
 					})
 					.optional(),
 			)
-			.mutation(async ({ input }) => {
-				const window = getWindow();
-				if (!window) {
-					return { canceled: true, path: null };
-				}
-
-				const result = await dialog.showOpenDialog(window, {
-					properties: ["openDirectory", "createDirectory"],
-					title: input?.title ?? "Select Directory",
-					defaultPath: input?.defaultPath ?? undefined,
-				});
-
-				if (result.canceled || result.filePaths.length === 0) {
-					return { canceled: true, path: null };
-				}
-
-				return { canceled: false, path: result.filePaths[0] };
+			.mutation(({ input }) => {
+				stubLog("window", "selectDirectory", input);
+				return { canceled: false, path: "/mock/path" };
 			}),
 
-		selectImageFile: publicProcedure.mutation(async () => {
-			const window = getWindow();
-			if (!window) {
-				return { canceled: true, dataUrl: null };
-			}
-
-			const result = await dialog.showOpenDialog(window, {
-				properties: ["openFile"],
-				title: "Select Organization Logo",
-				filters: [
-					{
-						name: "Images",
-						extensions: ["png", "jpg", "jpeg", "webp"],
-					},
-				],
-			});
-
-			if (result.canceled || result.filePaths.length === 0) {
-				return { canceled: true, dataUrl: null };
-			}
-
-			const filePath = result.filePaths[0];
-			const buffer = await fs.readFile(filePath);
-			const mimeType = getImageMimeType(filePath) ?? "image/png";
-			const base64 = buffer.toString("base64");
-			const dataUrl = `data:${mimeType};base64,${base64}`;
-
-			return { canceled: false, dataUrl };
+		selectImageFile: publicProcedure.mutation(() => {
+			stubLog("window", "selectImageFile");
+			return { canceled: false, dataUrl: null };
 		}),
 	});
 };

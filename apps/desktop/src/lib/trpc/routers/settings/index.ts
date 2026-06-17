@@ -6,7 +6,6 @@ import {
 	EXTERNAL_APPS,
 	FILE_OPEN_MODES,
 	NON_EDITOR_APPS,
-	settings,
 	TERMINAL_LINK_BEHAVIORS,
 	type TerminalPreset,
 } from "@superset/local-db";
@@ -15,388 +14,85 @@ import {
 	AGENT_PRESET_DESCRIPTIONS,
 	DEFAULT_TERMINAL_PRESET_AGENT_TYPES,
 } from "@superset/shared/agent-command";
-import {
-	applyLegacyPermissionsOverrides,
-	terminalPresetsMatchPre3546Seed,
-} from "@superset/shared/agent-permissions-migration";
-import {
-	type AgentDefinitionId,
-	applyCustomAgentDefinitionPatch,
-	createOverrideEnvelopeWithPatch,
-	deleteCustomAgentDefinition,
-	getAgentDefinitionById,
-	getCustomAgentDefinitionById,
-	readAgentPresetOverrides,
-	resetAgentPresetOverride,
-	resetAllAgentPresetOverrides,
-	resolveAgentConfigs,
-	upsertCustomAgentDefinition,
-} from "@superset/shared/agent-settings";
-import { TRPCError } from "@trpc/server";
-import { app } from "electron";
-import { env } from "main/env.main";
-import { exitImmediately } from "main/index";
-import { setupSingleAgent } from "main/lib/agent-setup";
-import { hasCustomRingtone } from "main/lib/custom-ringtones";
-import { getHostServiceCoordinator } from "main/lib/host-service-coordinator";
-import { localDb } from "main/lib/local-db";
-import {
-	DEFAULT_AUTO_APPLY_DEFAULT_PRESET,
-	DEFAULT_CONFIRM_ON_QUIT,
-	DEFAULT_EXPOSE_HOST_SERVICE_VIA_RELAY,
-	DEFAULT_FILE_OPEN_MODE,
-	DEFAULT_OPEN_LINKS_IN_APP,
-	DEFAULT_SHOW_PRESETS_BAR,
-	DEFAULT_SHOW_RESOURCE_MONITOR,
-	DEFAULT_TERMINAL_LINK_BEHAVIOR,
-	DEFAULT_USE_COMPACT_TERMINAL_ADD_BUTTON,
-} from "shared/constants";
-import { normalizePresetProjectIds } from "shared/preset-project-targeting";
-import {
-	CUSTOM_RINGTONE_ID,
-	DEFAULT_RINGTONE_ID,
-	isBuiltInRingtoneId,
-} from "shared/ringtones";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
-import { loadToken } from "../auth/utils/auth-functions";
-import { getGitAuthorName, getGitHubUsername } from "../workspaces/utils/git";
-import {
-	createCustomAgentInputSchema,
-	normalizeAgentPresetPatch,
-	normalizeCreateCustomAgentInput,
-	normalizeCustomAgentPatch,
-	updateAgentPresetInputSchema,
-	updateCustomAgentInputSchema,
-} from "./agent-preset-router.utils";
-import {
-	setFontSettingsSchema,
-	transformFontSettings,
-} from "./font-settings.utils";
-import {
-	normalizeTerminalPresets,
-	type PresetWithUnknownMode,
-	shouldPersistNormalizedTerminalPresets,
-} from "./preset-execution-mode";
-import { getPresetsForTriggerField } from "./preset-trigger-selection";
-
-function isValidRingtoneId(ringtoneId: string): boolean {
-	if (isBuiltInRingtoneId(ringtoneId)) {
-		return true;
-	}
-
-	if (ringtoneId === CUSTOM_RINGTONE_ID) {
-		return hasCustomRingtone();
-	}
-
-	return false;
-}
-
-function getSettings() {
-	let row = localDb.select().from(settings).get();
-	if (!row) {
-		row = localDb.insert(settings).values({ id: 1 }).returning().get();
-	}
-	return row;
-}
-
-function readRawTerminalPresets(): PresetWithUnknownMode[] {
-	const row = getSettings();
-	return (row.terminalPresets ?? []) as PresetWithUnknownMode[];
-}
-
-function getNormalizedTerminalPresets() {
-	const rawPresets = readRawTerminalPresets();
-	const normalizedPresets = normalizeTerminalPresets(rawPresets);
-
-	if (shouldPersistNormalizedTerminalPresets(rawPresets)) {
-		saveTerminalPresets(normalizedPresets);
-	}
-
-	return normalizedPresets;
-}
-
-function saveTerminalPresets(
-	presets: TerminalPreset[],
-	options?: { terminalPresetsInitialized?: boolean },
-) {
-	const values = { id: 1, terminalPresets: presets, ...options };
-	localDb
-		.insert(settings)
-		.values(values)
-		.onConflictDoUpdate({
-			target: settings.id,
-			set: { terminalPresets: presets, ...options },
-		})
-		.run();
-}
-
-let agentPresetPermissionsMigrationChecked = false;
-
-function runAgentPresetPermissionsMigration() {
-	if (agentPresetPermissionsMigrationChecked) return;
-	const row = getSettings();
-	if (row.agentPresetPermissionsMigratedAt) {
-		agentPresetPermissionsMigrationChecked = true;
-		return;
-	}
-
-	const isExistingUser =
-		row.terminalPresetsInitialized === true &&
-		terminalPresetsMatchPre3546Seed(row.terminalPresets);
-
-	const nextOverrides = isExistingUser
-		? applyLegacyPermissionsOverrides(
-				readAgentPresetOverrides(row.agentPresetOverrides),
-			)
-		: undefined;
-
-	const now = Date.now();
-	const setFields = {
-		agentPresetPermissionsMigratedAt: now,
-		...(nextOverrides ? { agentPresetOverrides: nextOverrides } : {}),
-	};
-	localDb
-		.insert(settings)
-		.values({ id: 1, ...setFields })
-		.onConflictDoUpdate({ target: settings.id, set: setFields })
-		.run();
-
-	agentPresetPermissionsMigrationChecked = true;
-}
-
-function readRawAgentPresetOverrides(): AgentPresetOverrideEnvelope {
-	runAgentPresetPermissionsMigration();
-	const row = getSettings();
-	return readAgentPresetOverrides(row.agentPresetOverrides);
-}
-
-function readRawAgentCustomDefinitions(): AgentCustomDefinition[] {
-	const row = getSettings();
-	return row.agentCustomDefinitions ?? [];
-}
-
-function saveAgentPresetOverrides(overrides: AgentPresetOverrideEnvelope) {
-	localDb
-		.insert(settings)
-		.values({
-			id: 1,
-			agentPresetOverrides: overrides,
-		})
-		.onConflictDoUpdate({
-			target: settings.id,
-			set: { agentPresetOverrides: overrides },
-		})
-		.run();
-}
-
-function saveAgentCustomDefinitions(definitions: AgentCustomDefinition[]) {
-	localDb
-		.insert(settings)
-		.values({
-			id: 1,
-			agentCustomDefinitions: definitions,
-		})
-		.onConflictDoUpdate({
-			target: settings.id,
-			set: { agentCustomDefinitions: definitions },
-		})
-		.run();
-}
-
-function clearCustomAgentPresetOverride(id: `custom:${string}`) {
-	saveAgentPresetOverrides(
-		resetAgentPresetOverride({
-			currentOverrides: readRawAgentPresetOverrides(),
-			id,
-		}),
-	);
-}
-
-function getResolvedAgentPresets() {
-	return resolveAgentConfigs({
-		customDefinitions: readRawAgentCustomDefinitions(),
-		overrideEnvelope: readRawAgentPresetOverrides(),
-	});
-}
-
-const DEFAULT_PRESETS: Omit<TerminalPreset, "id">[] =
-	DEFAULT_TERMINAL_PRESET_AGENT_TYPES.map((name) => ({
-		name,
-		description: AGENT_PRESET_DESCRIPTIONS[name],
-		cwd: "",
-		commands: AGENT_PRESET_COMMANDS[name],
-	}));
-
-function initializeDefaultPresets() {
-	const row = getSettings();
-	if (row.terminalPresetsInitialized) return row.terminalPresets ?? [];
-
-	const existingPresets = getNormalizedTerminalPresets();
-
-	const mergedPresets =
-		existingPresets.length > 0
-			? existingPresets
-			: DEFAULT_PRESETS.map((p) => ({
-					id: crypto.randomUUID(),
-					...p,
-					executionMode: p.executionMode ?? "new-tab",
-				}));
-
-	saveTerminalPresets(mergedPresets, { terminalPresetsInitialized: true });
-
-	return mergedPresets;
-}
-
-/** Get presets tagged with a given auto-apply field for the current project, falling back to all-project presets. */
-export function getPresetsForTrigger(
-	field: "applyOnWorkspaceCreated" | "applyOnNewTab",
-	projectId?: string | null,
-) {
-	return getPresetsForTriggerField(
-		getNormalizedTerminalPresets(),
-		field,
-		projectId,
-	);
-}
+import { STUB_SETTINGS, stubLog } from "../../stub-data";
 
 export const createSettingsRouter = () => {
 	return router({
 		getTerminalPresets: publicProcedure.query(() => {
-			const row = getSettings();
-			if (!row.terminalPresetsInitialized) {
-				return initializeDefaultPresets();
-			}
-			return getNormalizedTerminalPresets();
+			stubLog("settings", "getTerminalPresets");
+			return STUB_SETTINGS.terminalPresets;
 		}),
-		getAgentPresets: publicProcedure.query(() => getResolvedAgentPresets()),
+		getAgentPresets: publicProcedure.query(() => {
+			stubLog("settings", "getAgentPresets");
+			return STUB_SETTINGS.agentPresets;
+		}),
 		createCustomAgent: publicProcedure
-			.input(createCustomAgentInputSchema)
+			.input(
+				z.object({
+					name: z.string(),
+					description: z.string().optional(),
+					cwd: z.string(),
+					commands: z.array(z.string()),
+					kind: z.enum(["terminal"]).optional(),
+				}),
+			)
 			.mutation(({ input }) => {
-				const definition = {
-					id: `custom:${crypto.randomUUID()}` as const,
-					kind: "terminal" as const,
-					...normalizeCreateCustomAgentInput(input),
-				};
-				const nextDefinitions = upsertCustomAgentDefinition({
-					currentDefinitions: readRawAgentCustomDefinitions(),
-					definition,
-				});
-
-				saveAgentCustomDefinitions(nextDefinitions);
-				clearCustomAgentPresetOverride(definition.id);
-
-				return getResolvedAgentPresets().find(
-					(preset) => preset.id === definition.id,
-				);
+				stubLog("settings", "createCustomAgent", input);
+				return { success: true };
 			}),
 		updateCustomAgent: publicProcedure
-			.input(updateCustomAgentInputSchema)
-			.mutation(({ input }) => {
-				const definition = getCustomAgentDefinitionById({
-					customDefinitions: readRawAgentCustomDefinitions(),
-					id: input.id as `custom:${string}`,
-				});
-				if (!definition) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: `Custom agent ${input.id} not found`,
-					});
-				}
-
-				const nextDefinitions = upsertCustomAgentDefinition({
-					currentDefinitions: readRawAgentCustomDefinitions(),
-					definition: applyCustomAgentDefinitionPatch({
-						definition,
-						patch: normalizeCustomAgentPatch(input.patch),
+			.input(
+				z.object({
+					id: z.string(),
+					patch: z.object({
+						name: z.string().optional(),
+						description: z.string().optional(),
+						cwd: z.string().optional(),
+						commands: z.array(z.string()).optional(),
+						kind: z.enum(["terminal"]).optional(),
 					}),
-				});
-
-				saveAgentCustomDefinitions(nextDefinitions);
-				clearCustomAgentPresetOverride(input.id as `custom:${string}`);
-
-				return getResolvedAgentPresets().find(
-					(preset) => preset.id === input.id,
-				);
+				}),
+			)
+			.mutation(({ input }) => {
+				stubLog("settings", "updateCustomAgent", input);
+				return { success: true };
 			}),
 		deleteCustomAgent: publicProcedure
 			.input(z.object({ id: z.string().regex(/^custom:/) }))
 			.mutation(({ input }) => {
-				const existingDefinition = getCustomAgentDefinitionById({
-					customDefinitions: readRawAgentCustomDefinitions(),
-					id: input.id as `custom:${string}`,
-				});
-				if (!existingDefinition) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: `Custom agent ${input.id} not found`,
-					});
-				}
-
-				saveAgentCustomDefinitions(
-					deleteCustomAgentDefinition({
-						currentDefinitions: readRawAgentCustomDefinitions(),
-						id: input.id as `custom:${string}`,
-					}),
-				);
-				saveAgentPresetOverrides(
-					resetAgentPresetOverride({
-						currentOverrides: readRawAgentPresetOverrides(),
-						id: input.id as AgentDefinitionId,
-					}),
-				);
-
+				stubLog("settings", "deleteCustomAgent", input);
 				return { success: true };
 			}),
 		updateAgentPreset: publicProcedure
-			.input(updateAgentPresetInputSchema)
+			.input(
+				z.object({
+					id: z.string(),
+					patch: z.object({
+						name: z.string().optional(),
+						description: z.string().optional(),
+						cwd: z.string().optional(),
+						commands: z.array(z.string()).optional(),
+						projectIds: z.array(z.string()).nullable().optional(),
+						pinnedToBar: z.boolean().optional(),
+						useAsWorkspaceRun: z.boolean().optional(),
+						executionMode: z.enum(EXECUTION_MODES).optional(),
+					}),
+				}),
+			)
 			.mutation(({ input }) => {
-				const definition = getAgentDefinitionById({
-					customDefinitions: readRawAgentCustomDefinitions(),
-					id: input.id as AgentDefinitionId,
-				});
-				if (!definition) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: `Agent preset ${input.id} not found`,
-					});
-				}
-				if (definition.source === "user") {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: `Custom agent ${input.id} must be edited through custom-agent settings`,
-					});
-				}
-
-				const normalizedPatch = normalizeAgentPresetPatch({
-					definition,
-					patch: input.patch,
-				});
-				const nextOverrides = createOverrideEnvelopeWithPatch({
-					definition,
-					currentOverrides: readRawAgentPresetOverrides(),
-					id: input.id as AgentDefinitionId,
-					patch: normalizedPatch,
-				});
-
-				saveAgentPresetOverrides(nextOverrides);
-
-				return getResolvedAgentPresets().find(
-					(preset) => preset.id === input.id,
-				);
+				stubLog("settings", "updateAgentPreset", input);
+				return { success: true };
 			}),
 		resetAgentPreset: publicProcedure
 			.input(z.object({ id: z.string().min(1) }))
 			.mutation(({ input }) => {
-				const nextOverrides = resetAgentPresetOverride({
-					currentOverrides: readRawAgentPresetOverrides(),
-					id: input.id as AgentDefinitionId,
-				});
-				saveAgentPresetOverrides(nextOverrides);
+				stubLog("settings", "resetAgentPreset", input);
 				return { success: true };
 			}),
 		resetAllAgentPresets: publicProcedure.mutation(() => {
-			saveAgentPresetOverrides(resetAllAgentPresetOverrides());
+			stubLog("settings", "resetAllAgentPresets");
 			return { success: true };
 		}),
 		createTerminalPreset: publicProcedure
@@ -413,19 +109,8 @@ export const createSettingsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				const preset: TerminalPreset = {
-					id: crypto.randomUUID(),
-					...input,
-					projectIds: normalizePresetProjectIds(input.projectIds),
-					executionMode: input.executionMode ?? "new-tab",
-				};
-
-				const presets = getNormalizedTerminalPresets();
-				presets.push(preset);
-
-				saveTerminalPresets(presets);
-
-				return preset;
+				stubLog("settings", "createTerminalPreset", input);
+				return { success: true };
 			}),
 
 		updateTerminalPreset: publicProcedure
@@ -445,44 +130,14 @@ export const createSettingsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				const presets = getNormalizedTerminalPresets();
-				const preset = presets.find((p) => p.id === input.id);
-
-				if (!preset) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: `Terminal preset ${input.id} not found`,
-					});
-				}
-
-				if (input.patch.name !== undefined) preset.name = input.patch.name;
-				if (input.patch.description !== undefined)
-					preset.description = input.patch.description;
-				if (input.patch.cwd !== undefined) preset.cwd = input.patch.cwd;
-				if (input.patch.commands !== undefined)
-					preset.commands = input.patch.commands;
-				if (input.patch.projectIds !== undefined)
-					preset.projectIds = normalizePresetProjectIds(input.patch.projectIds);
-				if (input.patch.pinnedToBar !== undefined)
-					preset.pinnedToBar = input.patch.pinnedToBar;
-				if (input.patch.useAsWorkspaceRun !== undefined)
-					preset.useAsWorkspaceRun = input.patch.useAsWorkspaceRun;
-				if (input.patch.executionMode !== undefined)
-					preset.executionMode = input.patch.executionMode;
-
-				saveTerminalPresets(presets);
-
+				stubLog("settings", "updateTerminalPreset", input);
 				return { success: true };
 			}),
 
 		deleteTerminalPreset: publicProcedure
 			.input(z.object({ id: z.string() }))
 			.mutation(({ input }) => {
-				const presets = getNormalizedTerminalPresets();
-				const filteredPresets = presets.filter((p) => p.id !== input.id);
-
-				saveTerminalPresets(filteredPresets);
-
+				stubLog("settings", "deleteTerminalPreset", input);
 				return { success: true };
 			}),
 
@@ -495,19 +150,7 @@ export const createSettingsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				const presets = getNormalizedTerminalPresets();
-
-				const updatedPresets = presets.map((p) => {
-					if (p.id !== input.id) return p;
-
-					return {
-						...p,
-						[input.field]: input.enabled ? true : undefined,
-					};
-				});
-
-				saveTerminalPresets(updatedPresets);
-
+				stubLog("settings", "setPresetAutoApply", input);
 				return { success: true };
 			}),
 
@@ -519,28 +162,7 @@ export const createSettingsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				const presets = getNormalizedTerminalPresets();
-
-				const currentIndex = presets.findIndex((p) => p.id === input.presetId);
-				if (currentIndex === -1) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: "Preset not found",
-					});
-				}
-
-				if (input.targetIndex < 0 || input.targetIndex >= presets.length) {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: "Invalid target index for reordering presets",
-					});
-				}
-
-				const [removed] = presets.splice(currentIndex, 1);
-				presets.splice(input.targetIndex, 0, removed);
-
-				saveTerminalPresets(presets);
-
+				stubLog("settings", "reorderTerminalPresets", input);
 				return { success: true };
 			}),
 
@@ -552,12 +174,10 @@ export const createSettingsRouter = () => {
 					})
 					.optional(),
 			)
-			.query(({ input }) =>
-				getPresetsForTrigger(
-					"applyOnWorkspaceCreated",
-					input?.projectId ?? null,
-				),
-			),
+			.query(({ input }) => {
+				stubLog("settings", "getWorkspaceCreationPresets", input);
+				return STUB_SETTINGS.terminalPresets;
+			}),
 
 		getNewTabPresets: publicProcedure
 			.input(
@@ -567,228 +187,117 @@ export const createSettingsRouter = () => {
 					})
 					.optional(),
 			)
-			.query(({ input }) =>
-				getPresetsForTrigger("applyOnNewTab", input?.projectId ?? null),
-			),
+			.query(({ input }) => {
+				stubLog("settings", "getNewTabPresets", input);
+				return STUB_SETTINGS.terminalPresets;
+			}),
 
 		getSelectedRingtoneId: publicProcedure.query(() => {
-			const row = getSettings();
-			const storedId = row.selectedRingtoneId;
-
-			if (!storedId) {
-				return DEFAULT_RINGTONE_ID;
-			}
-
-			if (isValidRingtoneId(storedId)) {
-				return storedId;
-			}
-
-			console.warn(
-				`[settings] Invalid ringtone ID "${storedId}" found, resetting to default`,
-			);
-			localDb
-				.insert(settings)
-				.values({ id: 1, selectedRingtoneId: DEFAULT_RINGTONE_ID })
-				.onConflictDoUpdate({
-					target: settings.id,
-					set: { selectedRingtoneId: DEFAULT_RINGTONE_ID },
-				})
-				.run();
-			return DEFAULT_RINGTONE_ID;
+			stubLog("settings", "getSelectedRingtoneId");
+			return "default";
 		}),
 
 		setSelectedRingtoneId: publicProcedure
 			.input(z.object({ ringtoneId: z.string() }))
 			.mutation(({ input }) => {
-				if (!isValidRingtoneId(input.ringtoneId)) {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: `Invalid ringtone ID: ${input.ringtoneId}`,
-					});
-				}
-
-				localDb
-					.insert(settings)
-					.values({ id: 1, selectedRingtoneId: input.ringtoneId })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { selectedRingtoneId: input.ringtoneId },
-					})
-					.run();
-
+				stubLog("settings", "setSelectedRingtoneId", input);
 				return { success: true };
 			}),
 
 		getConfirmOnQuit: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.confirmOnQuit ?? DEFAULT_CONFIRM_ON_QUIT;
+			stubLog("settings", "getConfirmOnQuit");
+			return STUB_SETTINGS.confirmOnQuit;
 		}),
 
 		setConfirmOnQuit: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, confirmOnQuit: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { confirmOnQuit: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setConfirmOnQuit", input);
 				return { success: true };
 			}),
 
 		getExposeHostServiceViaRelay: publicProcedure.query(() => {
-			const row = getSettings();
-			return (
-				row.exposeHostServiceViaRelay ?? DEFAULT_EXPOSE_HOST_SERVICE_VIA_RELAY
-			);
+			stubLog("settings", "getExposeHostServiceViaRelay");
+			return STUB_SETTINGS.exposeHostServiceViaRelay;
 		}),
 
 		setExposeHostServiceViaRelay: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
-			.mutation(async ({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, exposeHostServiceViaRelay: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { exposeHostServiceViaRelay: input.enabled },
-					})
-					.run();
-
-				// Restart active host-service children so they pick up the new
-				// RELAY_URL from buildEnv(). No-op if the user isn't signed in.
-				const { token } = await loadToken();
-				if (!token) {
-					return { restartedOrgCount: 0 };
-				}
-
-				const coordinator = getHostServiceCoordinator();
-				const restartedOrgCount = coordinator.getActiveOrganizationIds().length;
-				await coordinator.restartAll({
-					authToken: token,
-					cloudApiUrl: env.NEXT_PUBLIC_API_URL,
-				});
-
-				return { restartedOrgCount };
+			.mutation(({ input }) => {
+				stubLog("settings", "setExposeHostServiceViaRelay", input);
+				return { success: true };
 			}),
 
 		getShowPresetsBar: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.showPresetsBar ?? DEFAULT_SHOW_PRESETS_BAR;
+			stubLog("settings", "getShowPresetsBar");
+			return STUB_SETTINGS.showPresetsBar;
 		}),
 
 		setShowPresetsBar: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, showPresetsBar: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { showPresetsBar: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setShowPresetsBar", input);
 				return { success: true };
 			}),
 
 		getUseCompactTerminalAddButton: publicProcedure.query(() => {
-			const row = getSettings();
-			return (
-				row.useCompactTerminalAddButton ??
-				DEFAULT_USE_COMPACT_TERMINAL_ADD_BUTTON
-			);
+			stubLog("settings", "getUseCompactTerminalAddButton");
+			return STUB_SETTINGS.useCompactTerminalAddButton;
 		}),
 
 		setUseCompactTerminalAddButton: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, useCompactTerminalAddButton: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { useCompactTerminalAddButton: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setUseCompactTerminalAddButton", input);
 				return { success: true };
 			}),
 
 		getTerminalLinkBehavior: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.terminalLinkBehavior ?? DEFAULT_TERMINAL_LINK_BEHAVIOR;
+			stubLog("settings", "getTerminalLinkBehavior");
+			return STUB_SETTINGS.terminalLinkBehavior;
 		}),
 
 		setTerminalLinkBehavior: publicProcedure
 			.input(z.object({ behavior: z.enum(TERMINAL_LINK_BEHAVIORS) }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, terminalLinkBehavior: input.behavior })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { terminalLinkBehavior: input.behavior },
-					})
-					.run();
-
+				stubLog("settings", "setTerminalLinkBehavior", input);
 				return { success: true };
 			}),
 
 		getFileOpenMode: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.fileOpenMode ?? DEFAULT_FILE_OPEN_MODE;
+			stubLog("settings", "getFileOpenMode");
+			return STUB_SETTINGS.fileOpenMode;
 		}),
 
 		setFileOpenMode: publicProcedure
 			.input(z.object({ mode: z.enum(FILE_OPEN_MODES) }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, fileOpenMode: input.mode })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { fileOpenMode: input.mode },
-					})
-					.run();
-
+				stubLog("settings", "setFileOpenMode", input);
 				return { success: true };
 			}),
 
 		getAutoApplyDefaultPreset: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.autoApplyDefaultPreset ?? DEFAULT_AUTO_APPLY_DEFAULT_PRESET;
+			stubLog("settings", "getAutoApplyDefaultPreset");
+			return STUB_SETTINGS.autoApplyDefaultPreset;
 		}),
 
 		setAutoApplyDefaultPreset: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, autoApplyDefaultPreset: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { autoApplyDefaultPreset: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setAutoApplyDefaultPreset", input);
 				return { success: true };
 			}),
 
 		restartApp: publicProcedure.mutation(() => {
-			app.relaunch();
-			exitImmediately();
+			stubLog("settings", "restartApp");
 			return { success: true };
 		}),
 
 		getBranchPrefix: publicProcedure.query(() => {
-			const row = getSettings();
+			stubLog("settings", "getBranchPrefix");
 			return {
-				mode: row.branchPrefixMode ?? "none",
-				customPrefix: row.branchPrefixCustom ?? null,
+				mode: "none" as const,
+				customPrefix: null,
 			};
 		}),
 
@@ -800,189 +309,113 @@ export const createSettingsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({
-						id: 1,
-						branchPrefixMode: input.mode,
-						branchPrefixCustom: input.customPrefix ?? null,
-					})
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: {
-							branchPrefixMode: input.mode,
-							branchPrefixCustom: input.customPrefix ?? null,
-						},
-					})
-					.run();
-
+				stubLog("settings", "setBranchPrefix", input);
 				return { success: true };
 			}),
 
 		getGitInfo: publicProcedure.query(async () => {
-			const githubUsername = await getGitHubUsername();
-			const authorName = await getGitAuthorName();
+			stubLog("settings", "getGitInfo");
 			return {
-				githubUsername,
-				authorName,
-				authorPrefix: authorName?.toLowerCase().replace(/\s+/g, "-") ?? null,
+				githubUsername: null,
+				authorName: null,
+				authorPrefix: null,
 			};
 		}),
 
 		getDeleteLocalBranch: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.deleteLocalBranch ?? false;
+			stubLog("settings", "getDeleteLocalBranch");
+			return STUB_SETTINGS.deleteLocalBranch;
 		}),
 
 		setDeleteLocalBranch: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, deleteLocalBranch: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { deleteLocalBranch: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setDeleteLocalBranch", input);
 				return { success: true };
 			}),
 
 		getNotificationSoundsMuted: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.notificationSoundsMuted ?? false;
+			stubLog("settings", "getNotificationSoundsMuted");
+			return STUB_SETTINGS.notificationSoundsMuted;
 		}),
 
 		setNotificationSoundsMuted: publicProcedure
 			.input(z.object({ muted: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, notificationSoundsMuted: input.muted })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { notificationSoundsMuted: input.muted },
-					})
-					.run();
-
+				stubLog("settings", "setNotificationSoundsMuted", input);
 				return { success: true };
 			}),
 
 		getNotificationVolume: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.notificationVolume ?? 100;
+			stubLog("settings", "getNotificationVolume");
+			return STUB_SETTINGS.notificationVolume;
 		}),
 
 		setNotificationVolume: publicProcedure
 			.input(z.object({ volume: z.number().min(0).max(100) }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, notificationVolume: input.volume })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { notificationVolume: input.volume },
-					})
-					.run();
-
+				stubLog("settings", "setNotificationVolume", input);
 				return { success: true };
 			}),
 
 		getFontSettings: publicProcedure.query(() => {
-			const row = getSettings();
-			return {
-				terminalFontFamily: row.terminalFontFamily ?? null,
-				terminalFontSize: row.terminalFontSize ?? null,
-				editorFontFamily: row.editorFontFamily ?? null,
-				editorFontSize: row.editorFontSize ?? null,
-			};
+			stubLog("settings", "getFontSettings");
+			return STUB_SETTINGS.fontSettings;
 		}),
 
 		setFontSettings: publicProcedure
-			.input(setFontSettingsSchema)
+			.input(
+				z.object({
+					terminalFontFamily: z.string().nullable().optional(),
+					terminalFontSize: z.number().nullable().optional(),
+					editorFontFamily: z.string().nullable().optional(),
+					editorFontSize: z.number().nullable().optional(),
+				}),
+			)
 			.mutation(({ input }) => {
-				const set = transformFontSettings(input);
-
-				if (Object.keys(set).length === 0) {
-					return { success: true };
-				}
-
-				localDb
-					.insert(settings)
-					.values({ id: 1, ...set })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set,
-					})
-					.run();
-
+				stubLog("settings", "setFontSettings", input);
 				return { success: true };
 			}),
 
 		getShowResourceMonitor: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.showResourceMonitor ?? DEFAULT_SHOW_RESOURCE_MONITOR;
+			stubLog("settings", "getShowResourceMonitor");
+			return STUB_SETTINGS.showResourceMonitor;
 		}),
 
 		setShowResourceMonitor: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, showResourceMonitor: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { showResourceMonitor: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setShowResourceMonitor", input);
 				return { success: true };
 			}),
 
 		getWorktreeBaseDir: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.worktreeBaseDir ?? null;
+			stubLog("settings", "getWorktreeBaseDir");
+			return STUB_SETTINGS.worktreeBaseDir;
 		}),
 
 		setWorktreeBaseDir: publicProcedure
 			.input(z.object({ path: z.string().nullable() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, worktreeBaseDir: input.path })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { worktreeBaseDir: input.path },
-					})
-					.run();
-
+				stubLog("settings", "setWorktreeBaseDir", input);
 				return { success: true };
 			}),
 
 		getOpenLinksInApp: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.openLinksInApp ?? DEFAULT_OPEN_LINKS_IN_APP;
+			stubLog("settings", "getOpenLinksInApp");
+			return STUB_SETTINGS.openLinksInApp;
 		}),
 
 		setOpenLinksInApp: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, openLinksInApp: input.enabled })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { openLinksInApp: input.enabled },
-					})
-					.run();
-
+				stubLog("settings", "setOpenLinksInApp", input);
 				return { success: true };
 			}),
 
 		getDefaultEditor: publicProcedure.query(() => {
-			const row = getSettings();
-			return row.defaultEditor ?? null;
+			stubLog("settings", "getDefaultEditor");
+			return STUB_SETTINGS.defaultEditor;
 		}),
 
 		setDefaultEditor: publicProcedure
@@ -997,37 +430,26 @@ export const createSettingsRouter = () => {
 				}),
 			)
 			.mutation(({ input }) => {
-				localDb
-					.insert(settings)
-					.values({ id: 1, defaultEditor: input.editor })
-					.onConflictDoUpdate({
-						target: settings.id,
-						set: { defaultEditor: input.editor },
-					})
-					.run();
-
+				stubLog("settings", "setDefaultEditor", input);
 				return { success: true };
 			}),
 
-		/**
-		 * Re-runs wrapper/settings/hook setup for one agent. Safety net for
-		 * the settings-UI Add flow; returns `{ ran: false }` for unknown ids.
-		 */
 		setupAgent: publicProcedure
 			.input(z.object({ agentId: z.string().min(1) }))
 			.mutation(({ input }) => {
-				const ran = setupSingleAgent(input.agentId);
-				return { ran };
+				stubLog("settings", "setupAgent", input);
+				return { success: true };
 			}),
 
-		// TODO: remove telemetry procedures once telemetry_enabled column is dropped
 		getTelemetryEnabled: publicProcedure.query(() => {
+			stubLog("settings", "getTelemetryEnabled");
 			return true;
 		}),
 
 		setTelemetryEnabled: publicProcedure
 			.input(z.object({ enabled: z.boolean() }))
-			.mutation(() => {
+			.mutation(({ input }) => {
+				stubLog("settings", "setTelemetryEnabled", input);
 				return { success: true };
 			}),
 	});
